@@ -1,0 +1,4 @@
+.echo [driver-harness-mcp] autoload.txt running
+.load <EXTENSION_DLL_PATH>\windbgmcpExt.dll
+!mcpstart
+.echo [driver-harness-mcp] MCP extension loaded.

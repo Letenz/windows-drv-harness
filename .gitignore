@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.uv/
+uv.lock
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build artifacts (C++ extension)
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.o
+build/
+out/
+x64/
+Debug/
+Release/
+
+# MSBuild
+*.user
+*.suo
+
+# Local config / secrets
+*.local
+.env
+.env.local
+local-config/
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Test artifacts / dumps
+*.dmp
+test-output/
+crash-dumps/
+
+# Patch rejects
+*.rej
+*.orig
+
+# OS
+desktop.ini

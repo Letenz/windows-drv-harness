@@ -1,0 +1,90 @@
+#Requires -RunAsAdministrator
+<#
+.SYNOPSIS
+    Step 05 — Write VirtualKD-Redux Monitor registry preset to HKLM.
+
+.DESCRIPTION
+    Configures vmmon64.exe to:
+      - DebuggerType = 2 (Custom)
+      - CustomDebuggerTemplate = launches WinDbg Preview with -c .load + !mcpstart
+
+    Detects DbgX.Shell.exe and the built extension DLL automatically. If either
+    is missing, prints a clear error and bails (does not write a broken value).
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [string]$RepoRoot
+)
+
+$ErrorActionPreference = 'Stop'
+
+# 1. Find DbgX.Shell.exe (Microsoft Store install or sideload)
+$dbgxCandidates = @(
+    "C:\Program Files\WindowsApps\Microsoft.WinDbg_*\DbgX.Shell.exe",
+    "$env:LOCALAPPDATA\Microsoft\WindowsApps\WinDbgX.exe",
+    "$env:ProgramFiles\WindowsApps\Microsoft.WinDbg_*\DbgX.Shell.exe"
+)
+$dbgxFound = $null
+foreach ($pattern in $dbgxCandidates) {
+    $hit = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($hit) { $dbgxFound = $hit.FullName; break }
+}
+if (-not $dbgxFound) {
+    Write-Host "  [XX] DbgX.Shell.exe not found in standard locations." -ForegroundColor Red
+    Write-Host "       Set DRIVER_HARNESS_DBGX env var to the absolute path, then re-run." -ForegroundColor Red
+    if ($env:DRIVER_HARNESS_DBGX -and (Test-Path $env:DRIVER_HARNESS_DBGX)) {
+        $dbgxFound = $env:DRIVER_HARNESS_DBGX
+    } else {
+        throw 'DbgX.Shell.exe not found.'
+    }
+}
+Write-Host "  DbgX.Shell.exe -> $dbgxFound"
+
+# 2. Find windbgmcpExt.dll
+$dllPath = $env:DRIVER_HARNESS_EXT_DLL
+if (-not $dllPath -or -not (Test-Path $dllPath)) {
+    $extDir = Join-Path $RepoRoot 'third_party\windbg-ext-mcp\extension'
+    $hit = Get-ChildItem -Path $extDir -Filter 'windbgmcpExt.dll' -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($hit) { $dllPath = $hit.FullName }
+}
+if (-not $dllPath -or -not (Test-Path $dllPath)) {
+    throw "windbgmcpExt.dll not found. Run install.ps1 without -SkipBuild, or download a prebuilt release."
+}
+Write-Host "  windbgmcpExt.dll -> $dllPath"
+
+# 3. Build the CustomDebuggerTemplate string
+$template = '"' + $dbgxFound + '" -k com:pipe,port=$(pipename),resets=0,reconnect -d -c ".load ' + $dllPath + '; !mcpstart"'
+
+Write-Host "  Template: $template" -ForegroundColor DarkGray
+
+# 4. Backup current values (best-effort)
+$backupFile = Join-Path $RepoRoot ('installer\.vkd-registry-backup-' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.reg')
+$null = New-Item -ItemType Directory -Path (Split-Path $backupFile) -Force
+& reg export 'HKLM\Software\VirtualKD-Redux\Monitor' $backupFile /y 2>&1 | Out-Null
+if (Test-Path $backupFile) {
+    Write-Host "  Backup written: $backupFile"
+}
+
+# 5. Write
+$key = 'HKLM:\Software\VirtualKD-Redux\Monitor'
+if (-not (Test-Path $key)) {
+    New-Item -Path $key -Force | Out-Null
+}
+Set-ItemProperty -Path $key -Name 'DebuggerType' -Value 2 -Type DWord
+Set-ItemProperty -Path $key -Name 'CustomDebuggerTemplate' -Value $template
+Set-ItemProperty -Path $key -Name 'AutoInvokeDebugger' -Value 1 -Type DWord
+Set-ItemProperty -Path $key -Name 'InitialBreakIn' -Value 1 -Type DWord
+Set-ItemProperty -Path $key -Name 'WaitForOS' -Value 1 -Type DWord
+
+# 6. Verify
+$verify = Get-ItemProperty -Path $key
+if ($verify.DebuggerType -ne 2) {
+    throw "Verification failed: DebuggerType is $($verify.DebuggerType), expected 2"
+}
+Write-Host "  Verified: DebuggerType=2, CustomDebuggerTemplate set." -ForegroundColor Green
+
+Write-Host ""
+Write-Host "  IMPORTANT: If vmmon64.exe is currently running, kill and relaunch it" -ForegroundColor Yellow
+Write-Host "  for these settings to take effect." -ForegroundColor Yellow

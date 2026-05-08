@@ -1,0 +1,13 @@
+Windows Registry Editor Version 5.00
+
+; Rollback to VirtualKD-Redux defaults
+; Restores both HKCU and HKLM Monitor keys to a sane default
+; (DebuggerType=1 = classic windbg.exe, default custom template)
+
+[HKEY_LOCAL_MACHINE\Software\VirtualKD-Redux\Monitor]
+"DebuggerType"=dword:00000001
+"CustomDebuggerTemplate"="cmd.exe /c \"$(toolspath)\\test.cmd\" $(pipename)"
+
+[HKEY_CURRENT_USER\Software\VirtualKD-Redux\Monitor]
+"DebuggerType"=dword:00000001
+"CustomDebuggerTemplate"="cmd.exe /c \"$(toolspath)\\test.cmd\" $(pipename)"

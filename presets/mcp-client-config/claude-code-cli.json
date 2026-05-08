@@ -1,0 +1,22 @@
+{
+  "_comment": "MCP server configuration for Anthropic's Claude Code CLI. Merge into your existing claude-code MCP config (typical path varies; see Claude Code CLI docs).",
+  "_paths": "Replace <REPO_ROOT> with the absolute path to your driver-harness-mcp repo.",
+
+  "mcpServers": {
+    "vmware": {
+      "command": "<REPO_ROOT>\\third_party\\vmware-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "vmware_mcp.server"],
+      "env": {
+        "VMRUN_PATH": "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vmrun.exe"
+      }
+    },
+    "windbg": {
+      "command": "<REPO_ROOT>\\third_party\\windbg-ext-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "mcp_server.server"]
+    },
+    "driver-harness": {
+      "command": "<REPO_ROOT>\\driver-harness-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "driver_harness_mcp.server"]
+    }
+  }
+}
