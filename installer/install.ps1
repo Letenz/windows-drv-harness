@@ -7,21 +7,30 @@
     Runs each step under installer\steps\ in order. Stops on first failure.
     Re-running is safe — each step is idempotent.
 
-.PARAMETER SkipBuild
-    Skip compiling windbgmcpExt.dll (useful if you have a prebuilt DLL).
+.PARAMETER Build
+    Compile windbgmcpExt.dll from third_party\windbg-ext-mcp source instead of
+    using the precompiled bin\windbgmcpExt.dll. Requires Visual Studio 2022 +
+    C++ workload + Windows 10 SDK.
+
+.PARAMETER SkipExt
+    Skip installing the WinDbg extension entirely (advanced; you must already
+    have a working DLL on disk).
 
 .PARAMETER SkipRegistry
     Skip writing the VirtualKD-Redux registry preset.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File installer\install.ps1
+    # Default: uses bin\windbgmcpExt.dll (no compiler required).
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File installer\install.ps1 -SkipBuild
+    powershell -ExecutionPolicy Bypass -File installer\install.ps1 -Build
+    # Builds windbgmcpExt.dll from third_party\windbg-ext-mcp source.
 #>
 [CmdletBinding()]
 param(
-    [switch]$SkipBuild,
+    [switch]$Build,
+    [switch]$SkipExt,
     [switch]$SkipRegistry
 )
 
@@ -35,11 +44,11 @@ Write-Host "Repo root: $repoRoot"
 Write-Host ""
 
 $steps = @(
-    @{ Name = '01 — Check prerequisites';       Script = 'check-prereqs.ps1';     Skip = $false        },
-    @{ Name = '02 — Init submodules';           Script = 'init-submodules.ps1';   Skip = $false        },
-    @{ Name = '03 — Build windbg extension';    Script = 'build-windbg-ext.ps1';  Skip = $SkipBuild    },
-    @{ Name = '04 — Set up Python envs';        Script = 'setup-python-envs.ps1'; Skip = $false        },
-    @{ Name = '05 — Write VKD registry preset'; Script = 'write-registry.ps1';    Skip = $SkipRegistry }
+    @{ Name = '01 — Check prerequisites';       Script = 'check-prereqs.ps1';        Skip = $false        ; Args = @{} },
+    @{ Name = '02 — Init submodules';           Script = 'init-submodules.ps1';      Skip = $false        ; Args = @{} },
+    @{ Name = '03 — Install windbg extension';  Script = 'install-windbg-ext.ps1';   Skip = $SkipExt      ; Args = @{ Build = [bool]$Build } },
+    @{ Name = '04 — Set up Python envs';        Script = 'setup-python-envs.ps1';    Skip = $false        ; Args = @{} },
+    @{ Name = '05 — Write VKD registry preset'; Script = 'write-registry.ps1';       Skip = $SkipRegistry ; Args = @{} }
 )
 
 foreach ($step in $steps) {
@@ -53,7 +62,8 @@ foreach ($step in $steps) {
     if (-not (Test-Path $path)) {
         throw "Step script missing: $path"
     }
-    & $path -RepoRoot $repoRoot
+    $stepArgs = @{ RepoRoot = $repoRoot } + $step.Args
+    & $path @stepArgs
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         throw "Step $($step.Name) exited with code $LASTEXITCODE"
     }

@@ -56,3 +56,8 @@ crash-dumps/
 
 # OS
 desktop.ini
+
+# Local-only working dirs (never commit)
+.release-staging/
+.test-baseline-backup/
+

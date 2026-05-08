@@ -49,16 +49,25 @@ Test-Item 'vmrun.exe'  {
 Test-Item 'submodule: vmware-mcp'      { (Test-Path (Join-Path $repoRoot 'third_party\vmware-mcp\.git')) -or (Test-Path (Join-Path $repoRoot 'third_party\vmware-mcp\README.md')) } 'Run: git submodule update --init --recursive'
 Test-Item 'submodule: windbg-ext-mcp'  { (Test-Path (Join-Path $repoRoot 'third_party\windbg-ext-mcp\.git')) -or (Test-Path (Join-Path $repoRoot 'third_party\windbg-ext-mcp\README.md')) } 'Run: git submodule update --init --recursive'
 
-# Extension DLL
-Test-Item 'windbgmcpExt.dll built' {
+# Extension DLL — checks locations in priority order:
+#   1. %ProgramData%\driver-harness-mcp\bin\windbgmcpExt.dll  (installed by install-windbg-ext.ps1)
+#   2. <repo>\bin\windbgmcpExt.dll                             (shipped precompiled)
+#   3. <repo>\third_party\windbg-ext-mcp\extension\...\windbgmcpExt.dll  (user -Build)
+Test-Item 'windbgmcpExt.dll available' {
+    $installed = Join-Path $env:ProgramData 'driver-harness-mcp\bin\windbgmcpExt.dll'
+    if (Test-Path $installed) { return "installed: $installed" }
+
+    $shipped = Join-Path $repoRoot 'bin\windbgmcpExt.dll'
+    if (Test-Path $shipped) { return "bin/: $shipped" }
+
     $extDir = Join-Path $repoRoot 'third_party\windbg-ext-mcp\extension'
     if (Test-Path $extDir) {
         $hit = Get-ChildItem $extDir -Filter 'windbgmcpExt.dll' -Recurse -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($hit) { return $hit.FullName }
+        if ($hit) { return "built: $($hit.FullName)" }
     }
     return $null
-} 'Run installer\install.ps1 (or place a prebuilt DLL under extension\build\x64\Release\).'
+} 'Run installer\install.ps1 — it will copy bin\windbgmcpExt.dll into %ProgramData%\driver-harness-mcp\bin\.'
 
 # VirtualKD registry
 Test-Item 'HKLM VKD DebuggerType=2' {

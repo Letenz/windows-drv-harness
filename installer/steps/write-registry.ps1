@@ -50,7 +50,9 @@ if (-not $dllPath -or -not (Test-Path $dllPath)) {
     if ($hit) { $dllPath = $hit.FullName }
 }
 if (-not $dllPath -or -not (Test-Path $dllPath)) {
-    throw "windbgmcpExt.dll not found. Run install.ps1 without -SkipBuild, or download a prebuilt release."
+    throw "windbgmcpExt.dll not found.`n" +
+          "  Run installer\steps\install-windbg-ext.ps1 first,`n" +
+          "  or point DRIVER_HARNESS_EXT_DLL at an existing DLL."
 }
 Write-Host "  windbgmcpExt.dll -> $dllPath"
 

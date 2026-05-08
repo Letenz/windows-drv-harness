@@ -43,7 +43,11 @@ Variables substituted by VKD at launch time:
 
 > 💡 The installer (`installer/steps/write-registry.ps1`) generates this string
 > from your detected paths automatically. You usually don't need to type it
-> by hand.
+> by hand. After `installer\install.ps1` runs, the DLL path in the template
+> will point at `%ProgramData%\driver-harness-mcp\bin\windbgmcpExt.dll`,
+> which is where step 03 (`install-windbg-ext.ps1`) places either the
+> precompiled `bin\windbgmcpExt.dll` from the repo or your local `-Build`
+> output.
 
 ## Mistakes we hit (and you might too)
 

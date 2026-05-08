@@ -7,16 +7,16 @@ kernel-patch BSOD test" in about 30 minutes.
 
 You need to install these **manually** (the installer won't do it):
 
-| Component | Why | Download |
-|---|---|---|
-| **VMware Workstation Pro 16+** | Hosts the guest VM | [vmware.com](https://www.vmware.com/products/workstation-pro.html) |
-| **A Windows guest VM** | Target for kernel debugging. Win10 19041+ or Win11 recommended. | (your install media) |
-| **Windows SDK / Debugging Tools for Windows** | Provides WinDbg Preview (`DbgX.Shell.exe`), debug symbols | [docs.microsoft.com](https://learn.microsoft.com/windows-hardware/drivers/debugger/) |
-| **Visual Studio 2022 + Windows SDK** | To compile the WinDbg extension DLL (or skip and use prebuilt release) | [visualstudio.microsoft.com](https://visualstudio.microsoft.com/) |
-| **Python 3.11+** | For the MCP servers | [python.org](https://www.python.org/) |
-| **Git for Windows** | To clone with submodules | [git-scm.com](https://git-scm.com/) |
-| **VirtualKD-Redux 2024.3** | Fast virtual KD transport | [github.com/4d61726b/VirtualKD-Redux/releases](https://github.com/4d61726b/VirtualKD-Redux/releases) |
-| **An MCP-capable AI client** | Claude Code CLI / Cursor / Cline / Continue | (your choice) |
+| Component | Why | Required? | Download |
+|---|---|---|---|
+| **VMware Workstation Pro 16+** | Hosts the guest VM | required | [vmware.com](https://www.vmware.com/products/workstation-pro.html) |
+| **A Windows guest VM** | Target for kernel debugging. Win10 19041+ or Win11 recommended. | required | (your install media) |
+| **Windows SDK / Debugging Tools for Windows** | Provides WinDbg Preview (`DbgX.Shell.exe`), debug symbols | required | [docs.microsoft.com](https://learn.microsoft.com/windows-hardware/drivers/debugger/) |
+| **Python 3.11+** | For the MCP servers | required | [python.org](https://www.python.org/) |
+| **Git for Windows** | To clone with submodules | required | [git-scm.com](https://git-scm.com/) |
+| **VirtualKD-Redux 2024.3** | Fast virtual KD transport | required | [github.com/4d61726b/VirtualKD-Redux/releases](https://github.com/4d61726b/VirtualKD-Redux/releases) |
+| **An MCP-capable AI client** | Claude Code CLI / Cursor / Cline / Continue | required | (your choice) |
+| **Visual Studio 2022 + C++ workload** | Only if you want to rebuild `windbgmcpExt.dll` from source. The repo ships a precompiled DLL in `bin/`. | **optional** | [visualstudio.microsoft.com](https://visualstudio.microsoft.com/) |
 
 The installer **will** verify these are present and tell you what's missing.
 
@@ -54,17 +54,31 @@ See [`configure-guest-vm.md`](./configure-guest-vm.md) for full details.
 
 ## Step 3 — Run the installer (host, Administrator)
 
+The default path uses the precompiled `bin\windbgmcpExt.dll` so you do **not** need
+Visual Studio installed:
+
 ```powershell
 # From the repo root, in an elevated PowerShell
 powershell -ExecutionPolicy Bypass -File installer\install.ps1
 ```
 
+If you want to compile the extension from source instead (requires VS 2022 + C++
+workload + Windows 10 SDK):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\install.ps1 -Build
+```
+
 The installer will:
-1. Verify host prerequisites (VMware, VS, Python, Git)
-2. Initialize and update submodules
-3. Build the WinDbg extension (`windbgmcpExt.dll`) — or, if you skip this, fetch the prebuilt release
-4. Set up Python virtual environments for the three MCP servers
-5. Write the VirtualKD-Redux registry preset to `HKLM\Software\VirtualKD-Redux\Monitor`
+1. Verify host prerequisites (VMware, Python, Git, WinDbg Preview, VirtualKD-Redux)
+2. Initialize and update submodules under `third_party\`
+3. Install the WinDbg extension DLL into `%ProgramData%\driver-harness-mcp\bin\`
+   (either by copying from `bin\windbgmcpExt.dll` after a SHA-256 integrity check,
+   or by compiling `third_party\windbg-ext-mcp\extension\` if you passed `-Build`)
+4. Set up Python virtual environments for the MCP servers
+5. Write the VirtualKD-Redux registry preset to
+   `HKLM\Software\VirtualKD-Redux\Monitor` so that VKD auto-launches WinDbg
+   Preview with our extension pre-loaded
 
 After it finishes, run the doctor:
 
