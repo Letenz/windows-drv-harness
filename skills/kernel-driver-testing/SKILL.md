@@ -94,7 +94,7 @@ See [`workflows/`](./workflows/) for full versions. Summary:
 
 ## Common pitfalls — short version
 
-Full list in [`knowledge/common-pitfalls.md`](./knowledge/common-pitfalls.md).
+Full symptom → fix table in [`docs/troubleshooting.md`](../../docs/troubleshooting.md).
 
 | Signal | Probable cause |
 |---|---|

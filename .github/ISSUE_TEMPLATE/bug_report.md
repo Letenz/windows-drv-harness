@@ -37,7 +37,7 @@ paste installer\doctor.ps1 output here
 
 ## Full error / log
 
-Please redact any company-internal info, IPs, or sensitive paths.
+ Please redact any private or sensitive info, IPs, or paths.
 
 ```
 ```

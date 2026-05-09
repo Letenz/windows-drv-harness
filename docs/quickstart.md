@@ -159,18 +159,8 @@ BUCKET_ID:  AV_nt!SwapContext
 
 🎉 Congrats. The full chain works.
 
-## Step 7 — Let your AI take over
-
-Now ask your AI assistant something like:
-
-> "Use driver-harness-mcp to test a fresh BSOD, recover the VM, and report the BugCheck code."
-
-If the Skills are loaded into context (see `skills/kernel-driver-testing/SKILL.md`),
-the AI will know exactly which tools to call.
-
 ## Next steps
 
 - Browse other [`examples/`](../examples/) (more coming in v0.2)
 - Read the [Architecture](./architecture.md) doc to understand what's happening under the hood
-- Hit a problem? [`troubleshooting.md`](./troubleshooting.md) has a flowchart of common failures
-- Want to add new MCP tools? See `driver-harness-mcp/src/driver_harness_mcp/tools/` (TODO: contribution guide)
+- Hit a problem? [`troubleshooting.md`](./troubleshooting.md) covers the common failures

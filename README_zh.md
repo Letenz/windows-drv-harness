@@ -128,9 +128,9 @@ driver-harness-mcp/
 
 ## AI Skills
 
-[`skills/kernel-driver-testing/`](./skills/kernel-driver-testing/) 目录下是为 AI 设计的 markdown 文档，
-让 AI 助手在工作时具备本流程的"先验知识"。兼容 Claude / Cursor /
-[`anthropics/skills`](https://github.com/anthropics/skills) 格式。
+[`skills/kernel-driver-testing/`](./skills/kernel-driver-testing/) 采用
+[`anthropics/skills`](https://github.com/anthropics/skills) 格式，兼容
+Claude / Cursor 以及其他支持 MCP 的客户端。
 
 ## 许可证
 

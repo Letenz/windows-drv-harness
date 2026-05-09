@@ -38,7 +38,6 @@ The canonical smoke test. **If this works, your whole stack is healthy.**
 
 - `run.ps1` — driver script (PowerShell)
 - `expected-output.txt` — sample of a successful run
-- `pseudo-flow.md` — the same flow explained as if an AI were thinking through it
 
 ## Customizing
 

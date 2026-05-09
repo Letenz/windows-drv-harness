@@ -129,10 +129,9 @@ driver-harness-mcp/
 
 ## AI Skills
 
-The [`skills/kernel-driver-testing/`](./skills/kernel-driver-testing/) directory contains
-markdown documents designed to be loaded into AI context to give the assistant
-"prior knowledge" about this workflow. Compatible with Claude / Cursor /
-[`anthropics/skills`](https://github.com/anthropics/skills) format.
+[`skills/kernel-driver-testing/`](./skills/kernel-driver-testing/) follows the
+[`anthropics/skills`](https://github.com/anthropics/skills) format. Compatible
+with Claude, Cursor, and other MCP-aware clients.
 
 ## License
 

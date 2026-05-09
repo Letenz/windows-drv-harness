@@ -4,7 +4,7 @@ Issues, PRs, and questions all welcome. A few ground rules to keep things clean.
 
 ## Things we do not accept (PRs will be closed)
 
-- Anything containing **company-internal information** (employer names, internal IPs/hostnames, internal repo paths, customer data, etc.). The maintainer's day job is unrelated to this project.
+- Anything containing **private or sensitive information** (real employer/customer names, internal IP addresses, hostnames, repo paths, real-world targets, etc.). Keep this project on generic, publicly-shareable kernel scenarios.
 - Examples / docs that target specific vendor products (anti-cheat solutions, AV/EDR products, DRM systems) by name. Generic kernel/driver scenarios only.
 - Tools that automate **harmful** actions (rootkit installation, privilege escalation against systems the user does not own, etc.).
 
@@ -48,7 +48,7 @@ Include:
 - Exact reproduction steps
 - Full error message / log
 
-**Redact any company info or sensitive paths before posting.**
+**Redact any private or sensitive paths before posting.**
 
 ## License
 

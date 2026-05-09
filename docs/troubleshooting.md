@@ -63,14 +63,15 @@ in WinDbg's command window and watch its output.
 
 ## C. Runtime phase — MCP client connection
 
-### C1. AI client says "MCP server failed to start"
+### C1. AI client says "MCP server failed to start" or "no tools found"
 - Check the AI client's log (varies by client — Claude Code CLI, Cursor, etc.)
-- Try running the MCP server manually first:
+- Try running the MCP server manually first to see the real error:
   ```powershell
   cd third_party\windbg-ext-mcp
   python -m mcp_server.server
   ```
 - Make sure the venv has `fastmcp==2.5.1` and `pywin32` installed (the installer should do this)
+- Stale venv after a Python upgrade is a common cause — delete the `.venv` folder and rerun the installer.
 
 ### C2. `Connect failed: Access is denied (5)` on the windbgmcp pipe
 Without our SDDL patch, only Administrator clients can connect to a pipe owned by elevated WinDbg.
@@ -100,6 +101,25 @@ windbg_ext.execute_command("!analyze -v")
 If you don't have `BreakInHandler`, you're using upstream `windbg-ext-mcp`
 without our patch — update to our fork.
 
+## Cx. WinDbg command quirks
+
+### Cx1. `~` (list threads) errors out in kernel mode
+`~` is user-mode. In kernel mode use `!thread`, `!process -1 0`, or `!for_each_thread`.
+
+### Cx2. `lm 1` or `lm <number>` is a syntax error
+`lm` doesn't take numeric arguments. Use `lm` alone, `lm m <module>` (wildcard), or `lm k` (kernel modules).
+
+### Cx3. `bp`, `g`, `eb` look like errors because they return no output
+These commands intentionally print nothing on success. Our `ExecuteCommandHandler` whitelists them and emits friendly confirmations; if yours doesn't, treat an empty success as success.
+
+### Cx4. `.load <dll>` fails
+Possible causes:
+- Path contains non-ASCII characters (WinDbg Preview mangles them)
+- File doesn't exist at that path
+- Bitness mismatch (32-bit DLL vs 64-bit WinDbg)
+
+Use a pure-ASCII absolute path and verify the file exists.
+
 ## D. Guest VM issues
 
 ### D1. `vmrun` returns `Command requires valid user name and password for the guest OS`
@@ -113,6 +133,15 @@ This is normal! `vmrun -gu/-gp` uses VMCI (no network needed). You only need
 ### D3. After BSOD, the guest doesn't appear in `vmmon64`'s VM list
 Re-revert the snapshot. After a hard crash the VKD client state in the guest may
 need a clean reload.
+
+### D4. KDNET configured but won't connect
+If you're using native KDNET (not VirtualKD-Redux):
+- Host firewall blocks UDP 50000 by default. Add an inbound rule (admin shell):
+  ```powershell
+  New-NetFirewallRule -DisplayName "KDNET" -Direction Inbound -Protocol UDP -LocalPort 50000 -Action Allow
+  ```
+- `bcdedit /dbgsettings net hostip:...` must point at your **VMnet8 host-side IP** (not the office NIC IP).
+  Find it with `Get-NetIPAddress -InterfaceAlias 'VMnet8'`.
 
 ## E. Performance / timing
 
@@ -129,9 +158,9 @@ Check sequentially:
 
 ## F. Still stuck?
 
-1. Run `installer\doctor.ps1 -Verbose` and capture the full output
-2. Run `tools\log-collector.ps1` (planned for v0.2) to bundle logs
-3. Open an issue with the doctor output and a description of what you ran
+1. Run `installer\doctor.ps1` and capture the full output.
+2. Open an issue with the doctor output, the exact reproduction steps, and the
+   error message you saw.
 
-Don't include any **company-internal info, IPs, or sensitive paths**. The
-log collector tries to redact obvious things, but please double-check.
+Before posting, please redact any private or sensitive paths, IP addresses,
+hostnames, or credentials.
