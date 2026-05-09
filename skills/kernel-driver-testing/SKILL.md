@@ -42,6 +42,40 @@ Three MCP servers, layered by abstraction:
 If `driver-harness-mcp` has `recover_to_clean_state`, use it instead of
 orchestrating `vmware-mcp` primitives yourself.
 
+## Reading user config
+
+At the start of any session involving the harness, read
+`driver-harness.config.json` in the repo root. It contains values only
+the user knows (VM path, snapshot name, guest credentials, tool
+locations). All inline comments and field docs live in
+`driver-harness.config.example.json` — read that too if the schema
+isn't obvious.
+
+Rules:
+
+- **If `driver-harness.config.json` is missing**, tell the user to
+  `Copy-Item driver-harness.config.example.json driver-harness.config.json`
+  and fill in at least: `vm.vmx_path`, `vm.baseline_snapshot`,
+  `guest.admin_user`, `guest.admin_password`. Do not proceed with any
+  VM or harness operation until these exist.
+- **If a field value is `"${env:VAR_NAME}"`**, resolve it from the
+  process's environment. If the env var is missing, ask the user to
+  set it (e.g. `$env:DRIVER_HARNESS_GUEST_PASSWORD = '...'`) rather
+  than prompting them to paste the password into chat.
+- **If `host.vmrun_path` / `host.vmmon64_path` are empty**, it's fine
+  to probe the filesystem yourself (`Get-ChildItem -Recurse` on likely
+  drives, registry under `HKLM:\Software\VMware, Inc.\VMware Workstation`,
+  etc.). Found something? **Offer the path to the user for confirmation,
+  then write it back into the config.**
+- **Never guess** `vm.*` or `guest.*` values. Ask.
+
+Destructive-operation guard: do not run `revertToSnapshot`, edit the
+VKD registry, delete a venv, patch kernel memory, or trigger a BSOD
+until the config has valid `vm.vmx_path`, `vm.baseline_snapshot`, and
+`guest.admin_user`/`admin_password`. These three are what lets you
+roll back; without them, a bad run leaves the guest in an unknown
+state.
+
 ## Standard workflows
 
 See [`workflows/`](./workflows/) for full versions. Summary:
@@ -55,7 +89,7 @@ See [`workflows/`](./workflows/) for full versions. Summary:
 - ❌ **Don't `.crash` while the target is running.** You'll get `Kernel transport in use, packet write failed`. Always `break_in` first.
 - ❌ **Don't forget to revert after a BSOD.** The guest is in a corrupted state; future tests will be unreliable.
 - ❌ **Don't try to `stop` a BSODed VM with `vmrun stop`**. Use `vmrun reset hard` or just `revertToSnapshot` (which works from any state).
-- ❌ **Don't hardcode IPs, usernames, or paths** in scripts you generate for the user. Ask or read config.
+- ❌ **Don't hardcode IPs, usernames, or paths** in scripts you generate for the user. Read them from `driver-harness.config.json`, or ask.
 - ❌ **Don't bypass the user's approval** for destructive actions (revert, reset, kernel patch). Describe, then confirm.
 
 ## Common pitfalls — short version

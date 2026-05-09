@@ -40,6 +40,30 @@ All checks should be green. Common red flags and fixes:
 - ❌ `windbgmcpExt.dll missing` → installer build step failed; rerun with `-SkipBuild` and use prebuilt
 - ❌ `HKLM registry not configured` → installer needs admin and didn't get it; rerun elevated
 
+## Step 3.5 — Create the per-user config
+
+Before the guest-config step, make sure the user has their local
+`driver-harness.config.json`. This is where VM path, snapshot name,
+and guest credentials live.
+
+```powershell
+Copy-Item driver-harness.config.example.json driver-harness.config.json
+```
+
+Then ask the user for the **four values you cannot guess** and write
+them into the file for them:
+
+- `vm.vmx_path` — absolute path to the guest's `.vmx`
+- `vm.baseline_snapshot` — the snapshot name to revert to (recommend `test_mcp_ready`;
+  it may not exist yet — you'll create it in Step 4)
+- `guest.admin_user` — guest admin username
+- `guest.admin_password` — guest admin password. Prefer the
+  `${env:DRIVER_HARNESS_GUEST_PASSWORD}` form and have them `$env:...`-set it
+  in their shell, so the password doesn't sit in a file.
+
+Leave `host.*` empty — you'll fill those in by probing the filesystem
+later, and only ask the user if probing fails.
+
 ## Step 4 — Configure the guest
 
 Walk them through [`docs/configure-guest-vm.md`](../../../docs/configure-guest-vm.md). The essentials:
