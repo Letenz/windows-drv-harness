@@ -61,3 +61,11 @@ desktop.ini
 .release-staging/
 .test-baseline-backup/
 
+# Per-user real configuration — MUST NOT be committed
+# (the example + schema ARE committed; the real file that holds actual
+#  paths / snapshot names / guest passwords is not)
+driver-harness.config.json
+
+# Runtime artifacts left by installer/doctor (always local, never commit)
+installer/.vkd-registry-backup-*.reg
+

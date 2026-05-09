@@ -88,6 +88,29 @@ powershell -ExecutionPolicy Bypass -File installer\doctor.ps1
 
 You should see all green checkmarks.
 
+### Step 3.5 — Create your per-user config
+
+Copy the example file to its real name (gitignored) and fill in the
+values your AI cannot guess:
+
+```powershell
+Copy-Item driver-harness.config.example.json driver-harness.config.json
+```
+
+Then edit `driver-harness.config.json`. The minimum fields you must
+fill in:
+
+- `vm.vmx_path` — absolute path to your guest's `.vmx` file
+- `vm.baseline_snapshot` — name of the snapshot to revert to (e.g. `test_mcp_ready`)
+- `guest.admin_user` / `guest.admin_password` — guest admin credentials
+
+You can also leave `host.vmrun_path` / `host.vmmon64_path` empty and
+let your AI assistant fill them in by probing your filesystem.
+
+> 💡 **Don't worry about getting it perfect right now.** The
+> [`first-time-setup.md`](../skills/kernel-driver-testing/workflows/first-time-setup.md)
+> workflow describes how an AI walks a user through this in chat.
+
 ## Step 4 — Configure VirtualKD-Redux
 
 Open `vmmon64.exe` from your VirtualKD-Redux installation, verify:

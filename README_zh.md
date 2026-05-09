@@ -78,13 +78,18 @@ cd driver-harness-mcp
 # 2. 运行安装脚本（必须管理员）
 powershell -ExecutionPolicy Bypass -File installer\install.ps1
 
-# 3. 检查环境
+# 3. 创建你的本地配置（VM 路径、guest 凭据等）
+Copy-Item driver-harness.config.example.json driver-harness.config.json
+# ...然后编辑 driver-harness.config.json 填写你的真实值。
+# 你的 AI 助手可以一步一步带你填，参见 skills/kernel-driver-testing/。
+
+# 4. 检查环境
 powershell -ExecutionPolicy Bypass -File installer\doctor.ps1
 
-# 4. 配置 AI 客户端（以 Claude Code CLI 为例）
+# 5. 配置 AI 客户端（以 Claude Code CLI 为例）
 # 把 presets\mcp-client-config\claude-code-cli.json 合并到你的配置
 
-# 5. 跑第一个示例
+# 6. 跑第一个示例
 cd examples\01-kernel-patch-bsod
 .\run.ps1
 ```

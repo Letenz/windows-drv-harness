@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://github.com/Letenz/driver-harness-mcp/blob/main/driver-harness.config.schema.json",
+  "title": "driver-harness-mcp user configuration",
+  "description": "Per-user configuration consumed by driver-harness-mcp's MCP server and its AI skills. Copy driver-harness.config.example.json to driver-harness.config.json and fill in your real values.",
+  "type": "object",
+  "required": ["vm", "guest", "host"],
+  "additionalProperties": true,
+
+  "properties": {
+    "$schema": { "type": "string" },
+
+    "vm": {
+      "type": "object",
+      "description": "The VMware Workstation guest VM this harness controls.",
+      "required": ["vmx_path", "baseline_snapshot"],
+      "additionalProperties": true,
+      "properties": {
+        "vmx_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Absolute path to the guest's .vmx file. Example: E:\\VMs\\test-vm\\test-vm.vmx",
+          "pattern": "\\.vmx$"
+        },
+        "baseline_snapshot": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the VMware snapshot the harness reverts to before every test run. MUST already exist."
+        }
+      }
+    },
+
+    "guest": {
+      "type": "object",
+      "description": "Credentials and paths inside the guest VM.",
+      "required": ["admin_user", "admin_password"],
+      "additionalProperties": true,
+      "properties": {
+        "admin_user": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Guest OS administrator username. vmrun -gu/-gp will use this."
+        },
+        "admin_password": {
+          "type": "string",
+          "description": "Guest admin password. Supports ${env:VAR_NAME} syntax to reference an environment variable instead of writing the password literally. vmrun does NOT accept empty passwords."
+        },
+        "desktop_path": {
+          "type": "string",
+          "description": "Writable directory inside the guest for staging driver binaries.",
+          "default": "C:\\Users\\Administrator\\Desktop"
+        },
+        "arch": {
+          "type": "string",
+          "enum": ["x64", "arm64", "x86"],
+          "description": "Guest CPU architecture. Most kernel debugging work happens on x64.",
+          "default": "x64"
+        },
+        "os_version_hint": {
+          "type": "string",
+          "description": "Optional hint for skills to pick the right offsets/patterns. Examples: win10_19041, win11_22631."
+        }
+      }
+    },
+
+    "host": {
+      "type": "object",
+      "description": "Tool paths on the host. Empty strings mean 'let the AI probe and fill in.'",
+      "additionalProperties": true,
+      "properties": {
+        "vmrun_path": {
+          "type": "string",
+          "description": "Absolute path to vmrun.exe. Empty string = let AI probe default locations.",
+          "default": ""
+        },
+        "vmmon64_path": {
+          "type": "string",
+          "description": "Absolute path to VirtualKD-Redux's vmmon64.exe. Empty string = let AI probe.",
+          "default": ""
+        },
+        "vmnet8_ip": {
+          "type": "string",
+          "description": "Host IP on VMware NAT network (VMnet8). Only needed for native KDNET, not for VirtualKD-Redux setups.",
+          "default": ""
+        },
+        "symbols_path": {
+          "type": "string",
+          "description": "Local directory used as WinDbg's symbol cache.",
+          "default": "D:\\symbols"
+        }
+      }
+    },
+
+    "flags": {
+      "type": "object",
+      "description": "Boolean hints telling the AI which setup steps have already been completed. Set them to true after you've done each one so the AI doesn't nag you.",
+      "additionalProperties": true,
+      "properties": {
+        "guest_testsigning_enabled": {
+          "type": "boolean",
+          "description": "True once `bcdedit /set testsigning on` has been run inside the guest and it rebooted."
+        },
+        "guest_kdnet_configured": {
+          "type": "boolean",
+          "description": "True once native KDNET has been set up inside the guest."
+        },
+        "guest_vkd_installed": {
+          "type": "boolean",
+          "description": "True once VirtualKD-Redux's guest driver has been installed in the guest."
+        },
+        "baseline_snapshot_created": {
+          "type": "boolean",
+          "description": "True once you've taken the baseline snapshot named `vm.baseline_snapshot`."
+        }
+      }
+    }
+  }
+}

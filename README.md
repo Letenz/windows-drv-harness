@@ -79,13 +79,18 @@ cd driver-harness-mcp
 # 2. Run installer (must be Administrator)
 powershell -ExecutionPolicy Bypass -File installer\install.ps1
 
-# 3. Verify environment
+# 3. Create your per-user config (VM path, guest credentials, etc.)
+Copy-Item driver-harness.config.example.json driver-harness.config.json
+# ...then edit driver-harness.config.json and fill in your real values.
+# Your AI assistant can walk you through this; see skills/kernel-driver-testing/.
+
+# 4. Verify environment
 powershell -ExecutionPolicy Bypass -File installer\doctor.ps1
 
-# 4. Configure your AI client (example for Claude Code CLI)
+# 5. Configure your AI client (example for Claude Code CLI)
 # Copy presets\mcp-client-config\claude-code-cli.json into your config
 
-# 5. Try the first example
+# 6. Try the first example
 cd examples\01-kernel-patch-bsod
 .\run.ps1
 ```
