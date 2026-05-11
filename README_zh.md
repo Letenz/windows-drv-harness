@@ -100,6 +100,32 @@ cd examples\01-kernel-patch-bsod
 
 完整流程见 [`docs/quickstart.md`](./docs/quickstart.md)。
 
+## 给 AI 的提示词示例
+
+README 是给人看的概览。真正让 AI 执行时，请让它把
+[`AI_ENTRYPOINT.md`](./AI_ENTRYPOINT.md) 和
+[`skills/kernel-driver-testing/SKILL.md`](./skills/kernel-driver-testing/SKILL.md)
+当作操作手册。
+
+可以这样问：
+
+```text
+请先阅读 AI_ENTRYPOINT.md，并使用 kernel-driver-testing skill。
+先诊断 harness 环境。恢复/启动 VM 前必须确保 vmmon64.exe 已经运行；
+如果找不到 vmmon64.exe 路径，请问我，然后写入 driver-harness.config.json。
+```
+
+```text
+帮我从 driver-harness.config.example.json 创建 driver-harness.config.json。
+只问我不能猜的值：VMX 路径、已经完成 VirtualKD 双机调试配置的基线快照名、
+guest 管理员账号/密码或环境变量名，以及探测失败时的 vmmon64.exe 路径。
+```
+
+```text
+请编译我的驱动，用 driver-harness-mcp.run_driver_load_verify 测试生成的 .sys，
+总结证据；如果失败，根据测试结果修改最小相关代码区域，然后重新编译并复测一次。
+```
+
 ## 目录结构
 
 ```
@@ -135,6 +161,9 @@ driver-harness-mcp/
 [`skills/kernel-driver-testing/`](./skills/kernel-driver-testing/) 采用
 [`anthropics/skills`](https://github.com/anthropics/skills) 格式，兼容
 Claude / Cursor 以及其他支持 MCP 的客户端。
+
+对 AI agent 来说，skill 和 `AI_ENTRYPOINT.md` 才是权威执行规则；上面的
+提示词只是方便人开始一次会话。
 
 ## 许可证
 

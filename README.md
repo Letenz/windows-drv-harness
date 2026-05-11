@@ -101,6 +101,33 @@ cd examples\01-kernel-patch-bsod
 
 See [`docs/quickstart.md`](./docs/quickstart.md) for the full 30-minute walkthrough.
 
+## Prompt Examples
+
+This README is for humans. When you ask an AI assistant to operate this repo,
+tell it to treat [`AI_ENTRYPOINT.md`](./AI_ENTRYPOINT.md) and
+[`skills/kernel-driver-testing/SKILL.md`](./skills/kernel-driver-testing/SKILL.md)
+as the operating manual.
+
+Useful prompts:
+
+```text
+Read AI_ENTRYPOINT.md and use the kernel-driver-testing skill. Diagnose the
+harness environment first. Do not restore/start the VM until vmmon64.exe is
+running, and ask me for the vmmon64.exe path if you cannot find it.
+```
+
+```text
+Help me create driver-harness.config.json from the example. Ask only for the
+VMX path, VirtualKD-ready baseline snapshot name, guest admin credentials or
+env-var name, and vmmon64.exe path if probing fails.
+```
+
+```text
+Build my driver, run driver-harness-mcp.run_driver_load_verify against the
+built .sys, summarize the evidence, and if it fails, patch the smallest relevant
+code area and rerun once.
+```
+
 ## Project Layout
 
 ```
@@ -136,6 +163,9 @@ driver-harness-mcp/
 [`skills/kernel-driver-testing/`](./skills/kernel-driver-testing/) follows the
 [`anthropics/skills`](https://github.com/anthropics/skills) format. Compatible
 with Claude, Cursor, and other MCP-aware clients.
+
+For agents, the skill and `AI_ENTRYPOINT.md` are canonical. The prompt examples
+above are just a human-friendly way to start a session.
 
 ## License
 
