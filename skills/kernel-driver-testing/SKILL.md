@@ -1,6 +1,6 @@
 ---
 name: kernel-driver-testing
-description: End-to-end Windows kernel driver test automation with VMware, VirtualKD-Redux, WinDbg, and MCP. Use when Codex needs to set up or diagnose the driver harness, deploy a .sys into a VM, load/unload a kernel driver, run a driver test/fix loop, trigger or analyze BSODs, inspect WinDbg output, recover a VM snapshot, or decide which driver-harness-mcp/vmware-mcp/windbg-ext-mcp tools to call instead of writing ad-hoc scripts.
+description: End-to-end Windows kernel driver test automation with VMware, VirtualKD-Redux, WinDbg, and MCP. Use when Codex needs to set up or diagnose the driver harness, deploy a .sys into a VM, load/unload a kernel driver, run a driver test/fix loop, trigger or analyze BSODs, inspect WinDbg output, recover a VM snapshot, or decide which driver-harness-mcp/vmware-mcp/windbg-ext-mcp tools to call.
 ---
 
 # Kernel Driver Testing
@@ -23,9 +23,9 @@ You
   -> vmware-mcp          (snapshot, start, copy files, run guest programs)
 ```
 
-Never generate a fresh PowerShell/Python orchestration script for the normal
-driver load/verify loop. Use `run_driver_load_verify`. Scripts are a fallback
-only when the requested workflow is outside the exposed MCP tools.
+For the normal driver load/verify loop, prefer `run_driver_load_verify`.
+Generate or edit scripts when the user asks for them, when making reusable test
+artifacts, or when the requested workflow is outside the exposed MCP tools.
 
 ## Session Start
 
@@ -61,13 +61,16 @@ is launched or relaunched. `DebuggerType=3` (WinDbg Preview mode) can ignore
 `CustomDebuggerTemplate`, so WinDbg starts without `windbgmcpExt.dll` and the
 AI loses MCP control. If registry values change, restart `vmmon64.exe`.
 
-Baseline snapshot contract: the baseline snapshot must already contain the
-guest-side debugging setup. The user must boot the guest, enable debug boot,
-install/configure VirtualKD-Redux guest support or KDNET, enable testsigning
-when needed, install VMware Tools, set a non-empty admin password, reboot, and
-only then take the baseline snapshot. Restoring the snapshot should put the VM
-back into a state that can immediately enter two-machine kernel debugging once
-`vmmon64.exe` is running on the host.
+Baseline snapshot contract: the user must provide a VM snapshot that already
+has two-machine kernel debugging configured. The default supported path is
+VirtualKD-Redux: the guest-side VirtualKD target must be installed/configured,
+debug boot must be enabled, VMware Tools must work, testsigning must be enabled
+when needed, and the guest admin account must have a non-empty password. Only
+after that setup is confirmed should the user take the baseline snapshot.
+Restoring this snapshot, with host `vmmon64.exe` already running, should
+immediately put the guest on the VirtualKD debug path and let `vmmon64.exe`
+auto-launch the MCP-enabled WinDbg. KDNET is an explicit alternative only when
+the config/docs say this VM uses KDNET.
 
 Startup order for VirtualKD automation:
 
@@ -130,13 +133,13 @@ Use lower-level tools with these guardrails:
 - Do not `.crash` while the target is running. `break_in` first.
 - Do not start `vmmon64.exe` until `DebuggerType=2` and
   `CustomDebuggerTemplate` contains `windbgmcpExt.dll` and `!mcpstart`.
-- Do not take the baseline snapshot before guest VirtualKD/KDNET is configured.
+- Do not treat a normal Windows snapshot as valid. The baseline must be taken
+  after guest VirtualKD two-machine debugging is configured and confirmed.
 - Do not revert/start the VM while `vmmon64.exe` is stopped and expect WinDbg to
   appear automatically.
 - Do not change VKD registry values while leaving an old `vmmon64.exe` instance
   running; stop it first, then restart it after the registry write.
 - Do not hardcode VM paths, credentials, usernames, or IPs in generated files.
-- Do not replace a high-level MCP tool with ad-hoc scripts for the same job.
 - Do not keep retrying after an environment failure. Diagnose, fix the blocker,
   then retry once.
 - Do not perform destructive actions such as snapshot revert, VM reset, kernel

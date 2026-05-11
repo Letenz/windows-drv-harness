@@ -74,13 +74,16 @@ later, and only ask the user if probing fails.
 
 Walk them through [`docs/configure-guest-vm.md`](../../../docs/configure-guest-vm.md). The essentials:
 1. `bcdedit /debug on` and `/set testsigning on`
-2. Install VirtualKD-Redux target in the guest
+2. Install and configure VirtualKD-Redux target in the guest
 3. Set a non-empty user password
 4. Reboot, settle, **snapshot as `test_mcp_ready`**
 
-Take this snapshot only after the guest really enters the debug-capable boot
-configuration. The invariant is: reverting to `test_mcp_ready` should be enough
-for the next boot to enter the VirtualKD/KDNET two-machine debugging path.
+Take this snapshot only after the guest really enters the VirtualKD-capable
+boot configuration. The invariant is: reverting to `test_mcp_ready` should be
+enough for the next boot to enter the VirtualKD two-machine debugging path once
+host `vmmon64.exe` is running. A normal Windows snapshot taken before guest
+VirtualKD setup is not a valid harness baseline. KDNET is an alternative only
+when the VM is explicitly configured for KDNET.
 
 ## Step 5 — Configure VirtualKD-Redux on host
 

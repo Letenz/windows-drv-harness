@@ -6,7 +6,9 @@ return the VM to the baseline snapshot.
 
 ## Preferred Tool
 
-Call `driver-harness-mcp.run_driver_load_verify` instead of writing scripts.
+Prefer `driver-harness-mcp.run_driver_load_verify` for the standard path.
+Generate scripts when the user asks for reusable tests or when a scenario is
+outside the high-level tool's coverage.
 
 Required input:
 

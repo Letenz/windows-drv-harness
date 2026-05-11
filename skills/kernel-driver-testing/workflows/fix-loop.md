@@ -28,4 +28,5 @@ results.
 - Preserve artifacts from the tool result in the summary.
 - Stop after repeated identical environment failures and ask for the missing
   host/guest fact.
-- Do not create new automation scripts unless no MCP tool can perform the step.
+- Prefer MCP tools for the harness control plane. Create test scripts when the
+  user asks for them or when they are useful reusable test artifacts.

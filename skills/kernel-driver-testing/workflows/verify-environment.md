@@ -6,9 +6,11 @@ run failed before the driver code was exercised.
 ## Preferred Path
 
 1. Call `driver-harness-mcp.diagnose_environment(check_guest=false)`.
-2. Confirm the config flags say the baseline snapshot was taken after guest
-   VirtualKD/KDNET setup. Restoring this snapshot must enter a debug-ready
-   guest state; if not, stop and ask the user to rebuild the baseline.
+2. Confirm the config flags say the baseline snapshot was taken after the user
+   completed guest-side VirtualKD two-machine debugging setup. Restoring this
+   snapshot must enter a debug-ready guest state once host `vmmon64.exe` is
+   running; if not, stop and ask the user to rebuild the baseline. KDNET is
+   acceptable only when the VM is explicitly configured for KDNET.
 3. If host checks are green but `vmmon64.exe running` is false, call
    `driver-harness-mcp.start_vkd_monitor`.
 4. If you need to prove the guest credentials and snapshot, call
@@ -54,13 +56,14 @@ already-running monitor picked it up.
 - `DebuggerType=3`: wrong for MCP automation. Set `DebuggerType=2` (Custom),
   keep the MCP `CustomDebuggerTemplate`, then restart `vmmon64.exe`.
 - Baseline flags false or unknown: the user must create a baseline snapshot
-  after guest VirtualKD/KDNET setup. Reverting a pre-debug snapshot will never
-  produce the WinDbg MCP pipe.
+  after guest VirtualKD two-machine debugging setup. Reverting a normal
+  pre-debug Windows snapshot will never produce the WinDbg MCP pipe. KDNET is
+  an alternative only when explicitly configured.
 - VMware Tools/auth failure: fix guest Tools or credentials and retake the
   baseline snapshot after the fix.
 
 ## Stop Conditions
 
-Stop and report the blocker when any required check is red. Do not generate a
-custom orchestration script to work around a missing VM, missing snapshot,
-missing credentials, or missing debugger pipe.
+Stop and report the blocker when any required check is red. A custom script
+cannot work around a missing VM, missing debug-ready snapshot, missing
+credentials, or missing debugger pipe.
