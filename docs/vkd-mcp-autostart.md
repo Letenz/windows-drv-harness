@@ -38,6 +38,15 @@ If it is stopped, it will not observe the VM event and will not auto-launch
 WinDbg. A running monitor may keep using the old launch configuration after a
 registry edit, so restart it after every registry change.
 
+The AI can manage `vmmon64.exe` when it knows the path. Put the confirmed path
+in `host.vmmon64_path` in `driver-harness.config.json`, or let the AI probe
+common VirtualKD-Redux locations and ask you when probing fails. For the
+smoothest closed loop, run the current agent/session elevated as Administrator:
+writing `HKLM\Software\VirtualKD-Redux\Monitor` and reliably stopping/starting
+`vmmon64.exe` are host admin operations. If the agent is not elevated, it should
+ask you to start/restart `vmmon64.exe` or run the registry step in an elevated
+shell before continuing.
+
 VirtualKD normally starts a new WinDbg for every restored debug snapshot, but
 the old WinDbg process may stay open. Those stale processes can keep reconnect
 state or create additional `\\.\pipe\windbgmcp` pipe servers, so an AI client

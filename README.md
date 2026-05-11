@@ -73,6 +73,7 @@ Existing components are great in isolation but **nothing glues them together**:
 ## Quickstart
 
 > ⚠️ Requires Windows host, VMware Workstation Pro 16+ (Pro), and a Windows guest VM with admin access.
+> AI agents should start with [`AI_ENTRYPOINT.md`](./AI_ENTRYPOINT.md).
 
 ```powershell
 # 1. Clone with submodules

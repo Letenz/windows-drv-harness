@@ -12,7 +12,11 @@ run failed before the driver code was exercised.
    running; if not, stop and ask the user to rebuild the baseline. KDNET is
    acceptable only when the VM is explicitly configured for KDNET.
 3. If host checks are green but `vmmon64.exe running` is false, call
-   `driver-harness-mcp.start_vkd_monitor`.
+   `driver-harness-mcp.start_vkd_monitor`. If `host.vmmon64_path` is empty,
+   probe common VirtualKD-Redux folders; if probing fails, ask the user for the
+   `vmmon64.exe` path and save it in config. Prefer running the current agent
+   elevated/as Administrator so it can start/restart `vmmon64.exe` and repair
+   HKLM registry settings without handing control back to the user.
 4. If you need to prove the guest credentials and snapshot, call
    `driver-harness-mcp.diagnose_environment(check_guest=true)`.
 5. Before starting or reverting a VirtualKD guest, call
@@ -43,9 +47,13 @@ already-running monitor picked it up.
 - Missing `vmrun.exe`: use the diagnosed path hint, `VMRUN_PATH`, or
   `host.vmrun_path`.
 - Missing `vmmon64.exe`: ask for the VirtualKD-Redux install folder, then write
-  `host.vmmon64_path` after the user confirms the path.
+  `host.vmmon64_path` after the user confirms the path. The AI can manage
+  vmmon once the path is known; admin/elevated agent rights are recommended.
 - `vmmon64.exe` stopped: start it before reverting/starting the VM. It is the
   host-side monitor that notices the VirtualKD debug event and launches WinDbg.
+- Access denied while writing VKD registry or starting/stopping vmmon: ask the
+  user to rerun the agent as Administrator or perform that single host step in
+  an elevated shell.
 - Missing `windbgmcp pipe`: the VM, VirtualKD monitor, WinDbg startup command,
   or extension load path is not ready. Do not continue to driver testing.
 - Multiple WinDbg instances: close stale harness-owned sessions before

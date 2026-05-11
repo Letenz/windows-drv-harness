@@ -36,7 +36,12 @@ artifacts, or when the requested workflow is outside the exposed MCP tools.
 3. Do not guess `vm.vmx_path`, `vm.baseline_snapshot`, `guest.admin_user`, or
    `guest.admin_password`. Ask the user or use `${env:VAR}` for secrets.
 4. If `vmmon64.exe` is configured but not running, call
-   `driver-harness-mcp.start_vkd_monitor`.
+   `driver-harness-mcp.start_vkd_monitor`. If `host.vmmon64_path` is empty,
+   probe common VirtualKD-Redux locations; if probing fails, ask the user for
+   the `vmmon64.exe` path and write it into `driver-harness.config.json`.
+   For fully automated registry/vmmon management, tell the user the current
+   agent should run elevated/as Administrator. If the agent is not elevated,
+   ask the user to start `vmmon64.exe` manually or rerun the agent as admin.
 5. Before reverting/starting a VirtualKD guest, close stale harness-owned
    WinDbg sessions with `driver-harness-mcp.cleanup_windbg_instances`.
    Multiple old WinDbg processes can leave multiple `windbgmcp` pipe servers,
@@ -59,7 +64,10 @@ Critical VirtualKD rule: `vmmon64.exe` reads
 to auto-start WinDbg. `DebuggerType` must be `2` (Custom) before `vmmon64.exe`
 is launched or relaunched. `DebuggerType=3` (WinDbg Preview mode) can ignore
 `CustomDebuggerTemplate`, so WinDbg starts without `windbgmcpExt.dll` and the
-AI loses MCP control. If registry values change, restart `vmmon64.exe`.
+AI loses MCP control. If registry values change, restart `vmmon64.exe`. Writing
+HKLM and reliably controlling `vmmon64.exe` are admin/elevated operations; if
+the current agent lacks admin rights, stop and ask the user to grant elevation
+or perform that host step manually.
 
 Baseline snapshot contract: the user must provide a VM snapshot that already
 has two-machine kernel debugging configured. The default supported path is
@@ -133,6 +141,10 @@ Use lower-level tools with these guardrails:
 - Do not `.crash` while the target is running. `break_in` first.
 - Do not start `vmmon64.exe` until `DebuggerType=2` and
   `CustomDebuggerTemplate` contains `windbgmcpExt.dll` and `!mcpstart`.
+- Do not guess `vmmon64.exe` when probing fails. Ask the user for the path and
+  store it in `host.vmmon64_path`.
+- Do not silently continue if HKLM/vmmon control needs admin rights and the
+  current agent is not elevated.
 - Do not treat a normal Windows snapshot as valid. The baseline must be taken
   after guest VirtualKD two-machine debugging is configured and confirmed.
 - Do not revert/start the VM while `vmmon64.exe` is stopped and expect WinDbg to

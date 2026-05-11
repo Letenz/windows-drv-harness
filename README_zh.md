@@ -72,6 +72,7 @@ API 与目录结构可能调整。Star / Watch 关注进展。
 ## 快速上手
 
 > ⚠️ 需要 Windows 主机 + VMware Workstation Pro 16+ + 一台有管理员权限的 Windows guest VM。
+> AI agent 请先读 [`AI_ENTRYPOINT.md`](./AI_ENTRYPOINT.md)。
 
 ```powershell
 # 1. 带 submodule clone

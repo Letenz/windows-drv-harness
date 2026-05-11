@@ -95,6 +95,10 @@
     "vmmon64_path": "",
     "_comment_vmmon64_path": [
       "Absolute path to VirtualKD-Redux's `vmmon64.exe`. Same rule as above.",
+      "If empty, the AI may probe common locations. If probing fails, give the",
+      "path to the AI and let it write the confirmed value here.",
+      "Starting/restarting vmmon64.exe and writing HKLM registry values work best",
+      "when the current AI agent/session is running as Administrator.",
       "Typical location:",
       "  F:\\download\\VirtualKD-Redux-<version>\\vmmon64.exe"
     ],
