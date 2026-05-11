@@ -63,7 +63,8 @@ API 与目录结构可能调整。Star / Watch 关注进展。
 1. **一键安装脚本**（除 VMware 本体和 VirtualKD-Redux 外都自动）
 2. **预设注册表配置**，让 VirtualKD-Redux 自动启动并加载 MCP 扩展
 3. **Skills 文档库**（给 AI 看的 markdown），描述标准流程和坑位
-4. **高阶 MCP 工具**：`recover_to_clean_state`、（计划中）`run_test_cycle` 等
+4. **高阶 MCP 工具**：`diagnose_environment`、`start_vkd_monitor`、
+   `recover_to_clean_state`、`wait_mcp_ready`、`run_driver_load_verify`
 5. **可直接复现的示例** —— 从 `examples/01-kernel-patch-bsod/` 开始
 
 ## 快速上手

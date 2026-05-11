@@ -61,7 +61,17 @@ $template = '"' + $dbgxFound + '" -k com:pipe,port=$(pipename),resets=0,reconnec
 
 Write-Host "  Template: $template" -ForegroundColor DarkGray
 
-# 4. Backup current values (best-effort)
+# 4. Stop vmmon64 before changing registry. It reads these values at launch.
+$vmmonToRestart = $null
+$runningVmmon = Get-Process -Name vmmon64 -ErrorAction SilentlyContinue
+if ($runningVmmon) {
+    $vmmonToRestart = ($runningVmmon | Where-Object { $_.Path } | Select-Object -First 1).Path
+    Write-Host "  Stopping vmmon64.exe before registry write..." -ForegroundColor Yellow
+    $runningVmmon | Stop-Process -Force
+    Start-Sleep -Seconds 1
+}
+
+# 5. Backup current values (best-effort)
 $backupFile = Join-Path $RepoRoot ('installer\.vkd-registry-backup-' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.reg')
 $null = New-Item -ItemType Directory -Path (Split-Path $backupFile) -Force
 & reg export 'HKLM\Software\VirtualKD-Redux\Monitor' $backupFile /y 2>&1 | Out-Null
@@ -69,7 +79,7 @@ if (Test-Path $backupFile) {
     Write-Host "  Backup written: $backupFile"
 }
 
-# 5. Write
+# 6. Write
 $key = 'HKLM:\Software\VirtualKD-Redux\Monitor'
 if (-not (Test-Path $key)) {
     New-Item -Path $key -Force | Out-Null
@@ -80,13 +90,19 @@ Set-ItemProperty -Path $key -Name 'AutoInvokeDebugger' -Value 1 -Type DWord
 Set-ItemProperty -Path $key -Name 'InitialBreakIn' -Value 1 -Type DWord
 Set-ItemProperty -Path $key -Name 'WaitForOS' -Value 1 -Type DWord
 
-# 6. Verify
+# 7. Verify
 $verify = Get-ItemProperty -Path $key
 if ($verify.DebuggerType -ne 2) {
     throw "Verification failed: DebuggerType is $($verify.DebuggerType), expected 2"
 }
 Write-Host "  Verified: DebuggerType=2, CustomDebuggerTemplate set." -ForegroundColor Green
 
-Write-Host ""
-Write-Host "  IMPORTANT: If vmmon64.exe is currently running, kill and relaunch it" -ForegroundColor Yellow
-Write-Host "  for these settings to take effect." -ForegroundColor Yellow
+# 8. Restart vmmon64 if it was running before the registry change.
+if ($vmmonToRestart -and (Test-Path $vmmonToRestart)) {
+    Write-Host "  Restarting vmmon64.exe so it reads the new registry values..." -ForegroundColor Yellow
+    Start-Process -FilePath $vmmonToRestart -WindowStyle Hidden
+} else {
+    Write-Host ""
+    Write-Host "  IMPORTANT: Start vmmon64.exe before reverting/starting the debug VM." -ForegroundColor Yellow
+    Write-Host "  It must be running to observe VirtualKD and auto-launch WinDbg." -ForegroundColor Yellow
+}

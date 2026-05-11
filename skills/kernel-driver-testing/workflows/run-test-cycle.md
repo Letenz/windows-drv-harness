@@ -1,119 +1,31 @@
-# Workflow: Run a single driver test cycle
+# Workflow: Run a Driver Test Cycle
 
-The bread-and-butter loop. **Every test starts and ends in the same clean state.**
+This legacy workflow is kept for compatibility. For a normal `.sys`
+load/unload test, use [`driver-load-verify.md`](./driver-load-verify.md) and
+call `driver-harness-mcp.run_driver_load_verify`.
 
-## Pre-conditions
+## Default Path
 
-- Host has VMware Workstation Pro running
-- Guest VM exists with snapshot `test_mcp_ready` (or whatever name the user uses — ask!)
-- All three MCP servers are connected to your client
-- Doctor script returns all green
+1. Verify prerequisites with
+   [`verify-environment.md`](./verify-environment.md).
+2. Call `driver-harness-mcp.run_driver_load_verify`.
+3. Use `verdict`, `failed_stage`, and `artifacts` to decide whether the next
+   action is environment repair, driver code repair, or crash analysis.
 
-If any of these are unclear, **ask the user first**. Don't assume.
+## Custom Path
 
-## The 7-stage cycle
+Only use raw primitives when the requested scenario is not a simple load/unload
+test:
 
-```
-1. recover_to_clean_state   →  guest at known baseline
-2. push_test_assets          →  copy driver / test program into guest
-3. install_driver            →  sc create + sc start
-4. trigger_event             →  cause whatever you're testing (load, BSOD, …)
-5. capture_results           →  windbg !analyze, sc query, copy logs out
-6. report                    →  summarize to user
-7. revert (always)           →  back to step 0 for next cycle
-```
+1. `driver-harness-mcp.recover_to_clean_state`.
+2. `vmware-mcp.vmrun_copy_to` for drivers, test EXEs, configs, or symbols.
+3. `windbg-ext-mcp.run_command(command="g", timeout_ms=<run window>)` while the
+   guest must run.
+4. `vmware-mcp.vmrun_run` using a JSON array for `args`.
+5. `windbg-ext-mcp.break_in` before inspection.
+6. `windbg-ext-mcp.run_command` for `lm`, `.dbgprint`, `.bugcheck`,
+   `!analyze -v`, stack, registers, or memory inspection.
+7. Revert before the next iteration unless the user explicitly wants to keep
+   the live debug state.
 
-## Stage details
-
-### 1. recover_to_clean_state
-
-Use the `driver-harness-mcp` tool of the same name. It encapsulates:
-- `vmrun revertToSnapshot <vmx> <snapshot_name>` (works regardless of VM state)
-- `vmrun start <vmx> nogui` if not already running
-- Polls `vmrun checkToolsState` until "running"
-- Optionally waits for `\\.\pipe\windbgmcp` and a healthy `vertarget`
-
-Expect ~25 seconds total.
-
-### 2. push_test_assets
-
-Use `vmware-mcp.vmrun_copy_to`:
-- Source: host file path (where you built/downloaded the driver)
-- Destination: guest path, typically `C:\Users\<user>\Desktop\<driver>.sys`
-- Verify with `vmrun_file_exists`
-
-### 3. install_driver
-
-Two `vmrun_run` calls:
-```powershell
-sc create MyDrv type= kernel start= demand binPath= "C:\path\to\driver.sys"
-sc start MyDrv
-```
-
-If `sc start` causes BSOD, that's a result you record — go straight to stage 5.
-The harness should detect BSOD via WinDbg `BUGCHECK` event or the absence of guest response.
-
-### 4. trigger_event
-
-Depends on what you're testing. Common patterns:
-- **Load-time test:** stage 3 already loaded; nothing to trigger.
-- **IOCTL-based test:** push a userland test exe, run it; it does `DeviceIoControl`.
-- **Kernel patch BSOD:** use `windbg-ext-mcp.break_in` + `eb` to corrupt a critical function.
-
-### 5. capture_results
-
-If a BSOD occurred:
-```
-break_in (if not already broken)
-.bugcheck      → BugCheck code
-!analyze -v    → full analysis
-.dumpdebug     → pointers
-```
-
-If no BSOD:
-- `sc query MyDrv` → state and exit code
-- Pull logs (DbgView, ETW) via `vmrun_copy_from`
-
-### 6. report
-
-Tell the user, in this order:
-1. Whether it crashed (and the BugCheck code if so)
-2. The bucket from `!analyze -v` (e.g. `BUCKET_ID: AV_nt!SomeFunc`)
-3. Brief interpretation (likely cause: NULL deref, use-after-free, etc.)
-4. Where the dump / logs were saved (host paths)
-
-### 7. revert (always)
-
-Even if the test passed. Keeps subsequent cycles clean.
-
-## Idempotency
-
-The whole cycle should be safe to retry. If something goes wrong mid-way:
-- Stop where you are
-- Tell the user
-- **Always revert** before suggesting "let's try again"
-
-## Example: one full cycle in pseudocode
-
-```python
-state = harness.recover_to_clean_state(vm="test_vm", snapshot="test_mcp_ready")
-if not state.ok:
-    return user_error(state.message)
-
-vmware.vmrun_copy_to(host="C:/build/mydriver.sys",
-                    guest="C:/Users/test/Desktop/mydriver.sys")
-
-result = vmware.vmrun_run("sc create MyDrv ...")
-result = vmware.vmrun_run("sc start MyDrv")
-
-if windbg.is_target_broken():
-    # BSOD occurred during sc start
-    bugcheck = windbg.execute_command(".bugcheck")
-    analysis = windbg.execute_command("!analyze -v")
-    report_to_user(bugcheck, analysis)
-else:
-    state = vmware.vmrun_run("sc query MyDrv")
-    report_to_user(state)
-
-harness.recover_to_clean_state(vm="test_vm", snapshot="test_mcp_ready")  # always
-```
+Every cycle should start and end at the baseline snapshot.

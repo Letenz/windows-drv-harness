@@ -13,6 +13,8 @@ import sys
 
 from fastmcp import FastMCP
 
+from .tools.driver_cycle import run_driver_load_verify
+from .tools.environment import diagnose_environment, start_vkd_monitor
 from .tools.recover_to_clean_state import recover_to_clean_state
 from .tools.wait_mcp_ready import wait_mcp_ready
 
@@ -23,9 +25,13 @@ logger = logging.getLogger("driver_harness_mcp")
 def build_server() -> FastMCP:
     mcp = FastMCP("driver-harness-mcp")
 
-    # v0.1 ships with two high-level tools. More to follow in v0.2.
+    # High-level tools. Prefer these from skills before falling back to raw
+    # vmware/windbg primitives; they encode the fragile guest/debugger timing.
+    mcp.tool()(diagnose_environment)
+    mcp.tool()(start_vkd_monitor)
     mcp.tool()(recover_to_clean_state)
     mcp.tool()(wait_mcp_ready)
+    mcp.tool()(run_driver_load_verify)
 
     return mcp
 

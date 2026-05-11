@@ -40,6 +40,12 @@ All checks should be green. Common red flags and fixes:
 - ❌ `windbgmcpExt.dll missing` → installer build step failed; rerun with `-SkipBuild` and use prebuilt
 - ❌ `HKLM registry not configured` → installer needs admin and didn't get it; rerun elevated
 
+After MCP servers are configured, prefer the structured tool check:
+
+```text
+driver-harness-mcp.diagnose_environment(check_guest=false)
+```
+
 ## Step 3.5 — Create the per-user config
 
 Before the guest-config step, make sure the user has their local
@@ -72,12 +78,32 @@ Walk them through [`docs/configure-guest-vm.md`](../../../docs/configure-guest-v
 3. Set a non-empty user password
 4. Reboot, settle, **snapshot as `test_mcp_ready`**
 
+Take this snapshot only after the guest really enters the debug-capable boot
+configuration. The invariant is: reverting to `test_mcp_ready` should be enough
+for the next boot to enter the VirtualKD/KDNET two-machine debugging path.
+
 ## Step 5 — Configure VirtualKD-Redux on host
 
 The installer should have written the registry already, but the user needs to
 **launch `vmmon64.exe` from VKD's install dir** and confirm:
 - "Custom" is selected
 - The custom command box matches what's in `presets/registry/vkd-redux-monitor-template.reg`
+
+Do not accept `DebuggerType=3` here. MCP automation requires
+`DebuggerType=2` (Custom), because `vmmon64.exe` uses this registry value to
+decide how it auto-starts WinDbg. If it starts WinDbg through the non-custom
+path, the `-c ".load ...; !mcpstart"` command is ignored and the pipe
+`\\.\pipe\windbgmcp` never appears.
+
+If changing the VKD registry, use this order:
+
+1. Stop `vmmon64.exe`.
+2. Write `DebuggerType=2` and the custom MCP template.
+3. Start `vmmon64.exe`.
+4. Revert/start the VM.
+
+`vmmon64.exe` must be running before the VM restore/start event; otherwise it
+does not observe VirtualKD and will not auto-launch WinDbg.
 
 ## Step 6 — Configure their AI client
 
@@ -90,7 +116,14 @@ Help them merge it into their existing client config (don't overwrite — append
 
 ## Step 7 — Smoke test
 
-Run the canonical example:
+First verify the structured status:
+
+```text
+driver-harness-mcp.diagnose_environment(check_guest=true)
+driver-harness-mcp.start_vkd_monitor()
+```
+
+Then run the canonical example:
 
 ```powershell
 cd examples\01-kernel-patch-bsod

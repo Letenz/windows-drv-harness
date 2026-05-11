@@ -16,7 +16,8 @@ The DLL is built from our fork of upstream `windbg-ext-mcp`:
 
 - Repo:   https://github.com/Letenz/windbg-ext-mcp
 - Branch: `driver-harness`
-- Commit: `48f044a` (initial v0.1.0-dh.1 release)
+- Commit: `dd4563a` (C++ extension source unchanged from the initial
+  `v0.1.0-dh.1` binary build; later changes add Python MCP tool wrappers)
 
 The same source is included in this repository as a Git submodule:
 

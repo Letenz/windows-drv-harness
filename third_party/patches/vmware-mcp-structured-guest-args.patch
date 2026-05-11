@@ -1,0 +1,114 @@
+diff --git a/src/vmware_mcp/server.py b/src/vmware_mcp/server.py
+index 8628641..7a07f9d 100644
+--- a/src/vmware_mcp/server.py
++++ b/src/vmware_mcp/server.py
+@@ -13,6 +13,14 @@ from .vmrun import VMRun
+ server = Server("vmware-mcp")
+ _vm_path_cache: dict[str, str] = {}
+ 
++ARGS_SCHEMA = {
++    "oneOf": [
++        {"type": "string"},
++        {"type": "array", "items": {"type": "string"}},
++    ],
++    "description": "Program arguments. Prefer an array so paths and tokens like 'binPath=' are preserved.",
++}
++
+ 
+ def get_client() -> VMwareClient:
+     return VMwareClient(
+@@ -112,7 +120,7 @@ async def list_tools() -> list[Tool]:
+         T("vmrun_copy_from", "Copy file from guest to host", {"vm_id": {"type": "string"}, "guest_path": {"type": "string"}, "host_path": {"type": "string"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id", "guest_path", "host_path"]),
+         T("vmrun_temp_file", "Create temp file in guest", {"vm_id": {"type": "string"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id"]),
+         # Guest Process
+-        T("vmrun_run", "Run program in guest", {"vm_id": {"type": "string"}, "program": {"type": "string"}, "args": {"type": "string"}, "no_wait": {"type": "boolean"}, "interactive": {"type": "boolean"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id", "program"]),
++        T("vmrun_run", "Run program in guest", {"vm_id": {"type": "string"}, "program": {"type": "string"}, "args": ARGS_SCHEMA, "no_wait": {"type": "boolean"}, "interactive": {"type": "boolean"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id", "program"]),
+         T("vmrun_script", "Run script in guest", {"vm_id": {"type": "string"}, "interpreter": {"type": "string"}, "script": {"type": "string"}, "no_wait": {"type": "boolean"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id", "interpreter", "script"]),
+         T("vmrun_ps", "List processes in guest", {"vm_id": {"type": "string"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id"]),
+         T("vmrun_kill", "Kill process in guest", {"vm_id": {"type": "string"}, "pid": {"type": "integer"}, "user": {"type": "string"}, "password": {"type": "string"}}, ["vm_id", "pid"]),
+diff --git a/src/vmware_mcp/vmrun.py b/src/vmware_mcp/vmrun.py
+index 42a179c..56bac49 100644
+--- a/src/vmware_mcp/vmrun.py
++++ b/src/vmware_mcp/vmrun.py
+@@ -1,7 +1,11 @@
+ """VMware vmrun command line wrapper."""
+ 
+ import asyncio
++import ctypes
++from ctypes import wintypes
+ import os
++import shlex
++from typing import Sequence
+ 
+ 
+ class VMRun:
+@@ -37,6 +41,24 @@ class VMRun:
+ 
+         return stdout.decode("utf-8", errors="replace").strip()
+ 
++    @staticmethod
++    def _normalize_guest_args(args: str | Sequence[str] | None) -> list[str]:
++        """Return argv tokens for runProgramInGuest extra args.
++
++        MCP callers should prefer a JSON array so Windows service arguments
++        such as ``binPath=`` and paths with spaces stay as separate argv items.
++        Strings are kept for backward compatibility.
++        """
++        if not args:
++            return []
++        if isinstance(args, (list, tuple)):
++            return [str(arg) for arg in args]
++        if not isinstance(args, str):
++            return [str(args)]
++        if os.name == "nt":
++            return _windows_command_line_to_argv(args)
++        return shlex.split(args)
++
+     # === Power ===
+     async def start(self, vmx_path: str, gui: bool = True) -> str:
+         return await self._run("start", vmx_path, "gui" if gui else "nogui")
+@@ -125,7 +147,7 @@ class VMRun:
+         return await self._run("CopyFileFromGuestToHost", vmx_path, guest_path, host_path, guest_user=user, guest_pass=password)
+ 
+     # === Guest Process Operations ===
+-    async def run_program(self, vmx_path: str, program: str, args: str = "", no_wait: bool = False, active_window: bool = False, interactive: bool = False, user: str = "", password: str = "") -> str:
++    async def run_program(self, vmx_path: str, program: str, args: str | Sequence[str] = "", no_wait: bool = False, active_window: bool = False, interactive: bool = False, user: str = "", password: str = "") -> str:
+         cmd_args = [vmx_path]
+         if no_wait:
+             cmd_args.append("-noWait")
+@@ -134,8 +156,7 @@ class VMRun:
+         if interactive:
+             cmd_args.append("-interactive")
+         cmd_args.append(program)
+-        if args:
+-            cmd_args.extend(args.split())
++        cmd_args.extend(self._normalize_guest_args(args))
+         return await self._run("runProgramInGuest", *cmd_args, guest_user=user, guest_pass=password)
+ 
+     async def run_script(self, vmx_path: str, interpreter: str, script: str, no_wait: bool = False, active_window: bool = False, interactive: bool = False, user: str = "", password: str = "") -> str:
+@@ -220,3 +241,25 @@ class VMRun:
+ 
+     async def delete_port_forwarding(self, network: str, protocol: str, host_port: int) -> str:
+         return await self._run("deletePortForwarding", network, protocol, str(host_port))
++
++
++def _windows_command_line_to_argv(command_line: str) -> list[str]:
++    try:
++        ctypes.windll.shell32.CommandLineToArgvW.argtypes = [
++            wintypes.LPCWSTR,
++            ctypes.POINTER(ctypes.c_int),
++        ]
++        ctypes.windll.shell32.CommandLineToArgvW.restype = ctypes.POINTER(wintypes.LPWSTR)
++        ctypes.windll.kernel32.LocalFree.argtypes = [wintypes.HLOCAL]
++        ctypes.windll.kernel32.LocalFree.restype = wintypes.HLOCAL
++
++        argc = ctypes.c_int()
++        argv = ctypes.windll.shell32.CommandLineToArgvW(command_line, ctypes.byref(argc))
++        if not argv:
++            return command_line.split()
++        try:
++            return [argv[i] for i in range(argc.value)]
++        finally:
++            ctypes.windll.kernel32.LocalFree(ctypes.cast(argv, wintypes.HLOCAL))
++    except Exception:
++        return command_line.split()

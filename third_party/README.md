@@ -7,6 +7,11 @@ Git submodules for the MCP servers and extensions this project builds upon.
 | `vmware-mcp/` | [ZacharyZcR/vmware-mcp](https://github.com/ZacharyZcR/vmware-mcp) — VMware Workstation control via MCP |
 | `windbg-ext-mcp/` | [Letenz/windbg-ext-mcp](https://github.com/Letenz/windbg-ext-mcp) — fork of [NadavLor/windbg-ext-mcp](https://github.com/NadavLor/windbg-ext-mcp) with two extra patches (SDDL pipe ACL + `BreakInHandler`) required for headless AI workflows |
 
+`vmware-mcp/` is an upstream submodule. Driver-harness applies the small patch
+in `third_party/patches/vmware-mcp-structured-guest-args.patch` during
+`installer\install.ps1`, so guest `runProgramInGuest` arguments can be passed
+as a JSON array instead of fragile shell text.
+
 ## Why submodules instead of vendored copies
 
 - Upstream projects evolve — we track specific commits so breaking

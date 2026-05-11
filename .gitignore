@@ -68,4 +68,4 @@ driver-harness.config.json
 
 # Runtime artifacts left by installer/doctor (always local, never commit)
 installer/.vkd-registry-backup-*.reg
-
+session_snapshots/

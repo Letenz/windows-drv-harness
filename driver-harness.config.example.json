@@ -40,6 +40,8 @@
       "  - `bcdedit /debug on` has been run inside the guest and it rebooted.",
       "  - `bcdedit /set testsigning on` has been run (for self-signed drivers).",
       "  - VirtualKD-Redux guest driver is installed, OR KDNET is configured.",
+      "  - Restoring this snapshot should immediately enter the debug-ready boot path",
+      "    when host vmmon64.exe is already running.",
       "  - A working admin user exists with a non-empty password.",
       "  - VMware Tools is installed (needed for vmrun guest operations)."
     ]
@@ -113,7 +115,11 @@
   "flags": {
     "_comment": [
       "Boolean hints the AI uses to pick the right workflow. Set them to `true`",
-      "once you've done the corresponding setup step, so the AI doesn't nag."
+      "once you've done the corresponding setup step, so the AI doesn't nag.",
+      "",
+      "Important: baseline_snapshot_created should only be true for a snapshot",
+      "taken after VirtualKD/KDNET, testsigning as needed, VMware Tools, and",
+      "guest credentials are already working."
     ],
     "guest_testsigning_enabled": false,
     "guest_kdnet_configured": false,

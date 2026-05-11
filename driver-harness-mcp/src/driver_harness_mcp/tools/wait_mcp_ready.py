@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
+
+from .environment import is_pipe_available
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ def wait_mcp_ready(
     timeout_seconds: int = 60,
     poll_interval_seconds: float = 1.0,
 ) -> dict:
-    """Wait until the WinDbg-MCP named pipe exists.
+    r"""Wait until the WinDbg-MCP named pipe exists.
 
     Useful as a final synchronization step after starting/reverting a VM.
     Returns immediately if the pipe is already present.
@@ -31,7 +32,7 @@ def wait_mcp_ready(
     deadline = start + timeout_seconds
 
     while True:
-        if Path(pipe_name).exists():
+        if is_pipe_available(pipe_name, timeout_ms=250):
             return {
                 "ok": True,
                 "message": f"{pipe_name} is ready.",

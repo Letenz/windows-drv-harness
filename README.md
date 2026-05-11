@@ -64,7 +64,8 @@ Existing components are great in isolation but **nothing glues them together**:
 1. **One-command installer** for everything except VMware itself and VirtualKD-Redux
 2. **Pre-configured registry presets** for VirtualKD-Redux auto-launch with the MCP extension
 3. **Skills** (markdown knowledge base for AI) describing standard workflows and pitfalls
-4. **High-level MCP tools** like `recover_to_clean_state` and (planned) `run_test_cycle`
+4. **High-level MCP tools**: `diagnose_environment`, `start_vkd_monitor`,
+   `recover_to_clean_state`, `wait_mcp_ready`, `run_driver_load_verify`
 5. **Verified working examples** — start with `examples/01-kernel-patch-bsod/`
 
 ## Quickstart

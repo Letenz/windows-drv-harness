@@ -108,7 +108,7 @@ You can also leave `host.vmrun_path` / `host.vmmon64_path` empty and
 let your AI assistant fill them in by probing your filesystem.
 
 > 💡 **Don't worry about getting it perfect right now.** The
-> [`first-time-setup.md`](../skills/kernel-driver-testing/workflows/first-time-setup.md)
+> [`setup-from-scratch.md`](../skills/kernel-driver-testing/workflows/setup-from-scratch.md)
 > workflow describes how an AI walks a user through this in chat.
 
 ## Step 4 — Configure VirtualKD-Redux

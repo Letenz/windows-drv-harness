@@ -1,121 +1,139 @@
 ---
 name: kernel-driver-testing
-description: |
-  End-to-end automation of Windows kernel driver testing with VMware, VirtualKD-Redux,
-  and WinDbg Preview, wired together via MCP (Model Context Protocol) servers.
-  Load this when asked to deploy drivers, trigger BSODs, analyze crash dumps,
-  or otherwise orchestrate kernel debugging workflows in a controlled VM.
-version: 0.1.0
-requires:
-  mcp_servers:
-    - vmware-mcp
-    - windbg-ext-mcp
-    - driver-harness-mcp
+description: End-to-end Windows kernel driver test automation with VMware, VirtualKD-Redux, WinDbg, and MCP. Use when Codex needs to set up or diagnose the driver harness, deploy a .sys into a VM, load/unload a kernel driver, run a driver test/fix loop, trigger or analyze BSODs, inspect WinDbg output, recover a VM snapshot, or decide which driver-harness-mcp/vmware-mcp/windbg-ext-mcp tools to call instead of writing ad-hoc scripts.
 ---
 
-# Kernel Driver Testing Skill
+# Kernel Driver Testing
 
-You are equipped to drive a complete Windows kernel debugging environment end-to-end.
-This skill document gives you the mental model, standard workflows, and common
-pitfalls you need.
+Use the skill as an operating manual for the harness. The core rule is simple:
+prefer `driver-harness-mcp` high-level tools first, then fall back to
+`windbg-ext-mcp` or `vmware-mcp` primitives only for work the high-level tool
+does not cover.
 
-## Mental model
-
-Three MCP servers, layered by abstraction:
+## Tool Layers
 
 ```
- You (the AI)
-     │
-     ▼
-┌──────────────────────────────────────────────────────────┐
-│ driver-harness-mcp  (high-level: recover/test_cycle)     │
-├──────────────────────────────────────────────────────────┤
-│ windbg-ext-mcp      (WinDbg control — break_in, execute, │
-│                      .crash, !analyze, lm, bp, eb, ...)  │
-├──────────────────────────────────────────────────────────┤
-│ vmware-mcp          (VM control — snapshot, start, stop, │
-│                      push/pull files, run programs)      │
-└──────────────────────────────────────────────────────────┘
+You
+  -> driver-harness-mcp  (diagnose_environment, start_vkd_monitor,
+                          recover_to_clean_state, wait_mcp_ready,
+                          run_driver_load_verify)
+  -> windbg-ext-mcp      (break_in, run_command, run_sequence, !analyze, lm)
+  -> vmware-mcp          (snapshot, start, copy files, run guest programs)
 ```
 
-**Rule of thumb:** prefer the **highest-level tool** that does what you need.
-If `driver-harness-mcp` has `recover_to_clean_state`, use it instead of
-orchestrating `vmware-mcp` primitives yourself.
+Never generate a fresh PowerShell/Python orchestration script for the normal
+driver load/verify loop. Use `run_driver_load_verify`. Scripts are a fallback
+only when the requested workflow is outside the exposed MCP tools.
 
-## Reading user config
+## Session Start
 
-At the start of any session involving the harness, read
-`driver-harness.config.json` in the repo root. It contains values only
-the user knows (VM path, snapshot name, guest credentials, tool
-locations). All inline comments and field docs live in
-`driver-harness.config.example.json` — read that too if the schema
-isn't obvious.
+1. Call `driver-harness-mcp.diagnose_environment(check_guest=false)` before any
+   VM or debugger operation.
+2. If it reports missing config, help the user create
+   `driver-harness.config.json` from `driver-harness.config.example.json`.
+3. Do not guess `vm.vmx_path`, `vm.baseline_snapshot`, `guest.admin_user`, or
+   `guest.admin_password`. Ask the user or use `${env:VAR}` for secrets.
+4. If `vmmon64.exe` is configured but not running, call
+   `driver-harness-mcp.start_vkd_monitor`.
+5. When host prerequisites are green and the VM is expected to be running, call
+   `driver-harness-mcp.wait_mcp_ready`, then verify with WinDbg `vertarget`.
 
-Rules:
+Use `diagnose_environment(check_guest=true)` when you need snapshot existence,
+VMware Tools, or guest credential checks. It is read-only.
 
-- **If `driver-harness.config.json` is missing**, tell the user to
-  `Copy-Item driver-harness.config.example.json driver-harness.config.json`
-  and fill in at least: `vm.vmx_path`, `vm.baseline_snapshot`,
-  `guest.admin_user`, `guest.admin_password`. Do not proceed with any
-  VM or harness operation until these exist.
-- **If a field value is `"${env:VAR_NAME}"`**, resolve it from the
-  process's environment. If the env var is missing, ask the user to
-  set it (e.g. `$env:DRIVER_HARNESS_GUEST_PASSWORD = '...'`) rather
-  than prompting them to paste the password into chat.
-- **If `host.vmrun_path` / `host.vmmon64_path` are empty**, it's fine
-  to probe the filesystem yourself (`Get-ChildItem -Recurse` on likely
-  drives, registry under `HKLM:\Software\VMware, Inc.\VMware Workstation`,
-  etc.). Found something? **Offer the path to the user for confirmation,
-  then write it back into the config.**
-- **Never guess** `vm.*` or `guest.*` values. Ask.
+Critical VirtualKD rule: `vmmon64.exe` reads
+`HKLM\Software\VirtualKD-Redux\Monitor` at launch and uses that registry state
+to auto-start WinDbg. `DebuggerType` must be `2` (Custom) before `vmmon64.exe`
+is launched or relaunched. `DebuggerType=3` (WinDbg Preview mode) can ignore
+`CustomDebuggerTemplate`, so WinDbg starts without `windbgmcpExt.dll` and the
+AI loses MCP control. If registry values change, restart `vmmon64.exe`.
 
-Destructive-operation guard: do not run `revertToSnapshot`, edit the
-VKD registry, delete a venv, patch kernel memory, or trigger a BSOD
-until the config has valid `vm.vmx_path`, `vm.baseline_snapshot`, and
-`guest.admin_user`/`admin_password`. These three are what lets you
-roll back; without them, a bad run leaves the guest in an unknown
-state.
+Baseline snapshot contract: the baseline snapshot must already contain the
+guest-side debugging setup. The user must boot the guest, enable debug boot,
+install/configure VirtualKD-Redux guest support or KDNET, enable testsigning
+when needed, install VMware Tools, set a non-empty admin password, reboot, and
+only then take the baseline snapshot. Restoring the snapshot should put the VM
+back into a state that can immediately enter two-machine kernel debugging once
+`vmmon64.exe` is running on the host.
 
-## Standard workflows
+Startup order for VirtualKD automation:
 
-See [`workflows/`](./workflows/) for full versions. Summary:
+1. Stop `vmmon64.exe` if changing `DebuggerType` or `CustomDebuggerTemplate`.
+2. Write `DebuggerType=2` and the MCP `CustomDebuggerTemplate`.
+3. Start `vmmon64.exe`.
+4. Revert/start the VM. `vmmon64.exe` must already be running so it can observe
+   the VirtualKD event and auto-launch WinDbg with MCP.
 
-1. **[`setup-from-scratch.md`](./workflows/setup-from-scratch.md)** — User just installed the repo. Walk them through guest configuration and baseline snapshot creation.
-2. **[`run-test-cycle.md`](./workflows/run-test-cycle.md)** — Revert → deploy driver → trigger → analyze → revert. The daily bread-and-butter.
-3. **[`crash-analysis.md`](./workflows/crash-analysis.md)** — How to read `!analyze -v` output, identify bucket IDs, correlate with driver code.
+## Standard Workflows
 
-## What NOT to do
+- Environment setup and diagnosis: read
+  [`workflows/verify-environment.md`](./workflows/verify-environment.md).
+- Normal driver load/unload verification: read
+  [`workflows/driver-load-verify.md`](./workflows/driver-load-verify.md).
+- Iterative build/test/fix loop: read [`workflows/fix-loop.md`](./workflows/fix-loop.md).
+- Fresh install walkthrough: read
+  [`workflows/setup-from-scratch.md`](./workflows/setup-from-scratch.md).
+- Crash triage: read [`workflows/crash-analysis.md`](./workflows/crash-analysis.md).
 
-- ❌ **Don't `.crash` while the target is running.** You'll get `Kernel transport in use, packet write failed`. Always `break_in` first.
-- ❌ **Don't forget to revert after a BSOD.** The guest is in a corrupted state; future tests will be unreliable.
-- ❌ **Don't try to `stop` a BSODed VM with `vmrun stop`**. Use `vmrun reset hard` or just `revertToSnapshot` (which works from any state).
-- ❌ **Don't hardcode IPs, usernames, or paths** in scripts you generate for the user. Read them from `driver-harness.config.json`, or ask.
-- ❌ **Don't bypass the user's approval** for destructive actions (revert, reset, kernel patch). Describe, then confirm.
+## Driver Load Tests
 
-## Common pitfalls — short version
+For a `.sys` load/unload test, call:
 
-Full symptom → fix table in [`docs/troubleshooting.md`](../../docs/troubleshooting.md).
+```text
+driver-harness-mcp.run_driver_load_verify(
+  sys_path=<absolute host path>,
+  service_name=<driver service/module name>,
+  load_marker=<expected DbgPrint marker or "">,
+  unload_marker=<expected DbgPrint marker or "">
+)
+```
 
-| Signal | Probable cause |
-|---|---|
-| MCP tool returns `Access is denied (5)` on pipe | SDDL patch missing — confirm you're using `Letenz/windbg-ext-mcp` |
-| `execute_command` returns partial output and stalls | Target is running, need `break_in` first |
-| `vmrun start` succeeds but `\\.\pipe\kd_<vm>` never appears | Guest isn't booting into the debug entry (VKD entry), or bcdedit debug is off |
-| WinDbg launches but `\\.\pipe\windbgmcp` missing | `-c .load` didn't run — check `DebuggerType=2` and `CustomDebuggerTemplate` |
-| `vmrun -gu/-gp` says "Command requires valid user name and password" | Guest account has empty password; vmrun rejects that |
+Interpret the returned JSON:
 
-## When in doubt
+- `verdict=PASS`: report the service name, guest staging path, and key evidence.
+- `verdict=FAIL`: use `failed_stage`, `message`, `detail`, and `artifacts` to
+  decide the next code change. Do not rerun blindly.
+- The tool reverts the VM by default. Keep `always_revert=true` unless the user
+  explicitly wants to preserve the crashed/broken state for live investigation.
 
-- Call `driver-harness-mcp.wait_mcp_ready()` to confirm the whole stack is up
-- Run `execute_command("vertarget")` — if it returns a Windows kernel version string, everything's healthy
-- Read [`knowledge/windbg-cheatsheet.md`](./knowledge/windbg-cheatsheet.md) before guessing commands
+## Primitive Tool Rules
 
-## Escalation
+Use lower-level tools with these guardrails:
 
-If a workflow fails in a way these docs don't cover:
+- Before inspection commands after `g`, call `windbg-ext-mcp.break_in`.
+- For long-running `g`, pass `timeout_ms` intentionally; it is the run window.
+- For `vmware-mcp.vmrun_run`, pass `args` as a JSON array, not a shell string.
+  Example: `["create", "MyDrv", "type=", "kernel", "start=", "demand",
+  "binPath=", "C:\\Users\\Administrator\\Desktop\\MyDrv.sys"]`.
+- Always copy crash artifacts out of the guest before reverting.
+- Always revert after BSOD testing unless the user explicitly asks to keep the
+  live debugging state.
 
-1. Summarize what you tried and the exact error
-2. Suggest the user run `installer\doctor.ps1`
-3. Point them to `docs/troubleshooting.md`
+## What Not To Do
 
-Do **not** attempt random recovery actions (killing processes, rebooting, etc.) without explicit user approval.
+- Do not `.crash` while the target is running. `break_in` first.
+- Do not start `vmmon64.exe` until `DebuggerType=2` and
+  `CustomDebuggerTemplate` contains `windbgmcpExt.dll` and `!mcpstart`.
+- Do not take the baseline snapshot before guest VirtualKD/KDNET is configured.
+- Do not revert/start the VM while `vmmon64.exe` is stopped and expect WinDbg to
+  appear automatically.
+- Do not change VKD registry values while leaving an old `vmmon64.exe` instance
+  running; stop it first, then restart it after the registry write.
+- Do not hardcode VM paths, credentials, usernames, or IPs in generated files.
+- Do not replace a high-level MCP tool with ad-hoc scripts for the same job.
+- Do not keep retrying after an environment failure. Diagnose, fix the blocker,
+  then retry once.
+- Do not perform destructive actions such as snapshot revert, VM reset, kernel
+  patching, or intentional BSOD unless the config has a valid VMX, baseline
+  snapshot, and guest credentials.
+
+## Useful References
+
+- WinDbg command reminders:
+  [`knowledge/windbg-cheatsheet.md`](./knowledge/windbg-cheatsheet.md)
+- BugCheck lookup:
+  [`knowledge/common-bugcheck-codes.md`](./knowledge/common-bugcheck-codes.md)
+- VirtualKD details:
+  [`knowledge/vkd-debugger-types.md`](./knowledge/vkd-debugger-types.md)
+- Troubleshooting table:
+  [`docs/troubleshooting.md`](../../docs/troubleshooting.md)
