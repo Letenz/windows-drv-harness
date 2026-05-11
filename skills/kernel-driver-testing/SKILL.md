@@ -15,6 +15,8 @@ does not cover.
 ```
 You
   -> driver-harness-mcp  (diagnose_environment, start_vkd_monitor,
+                          list_windbg_processes, cleanup_windbg_instances,
+                          query_debugger_status, ensure_debugger_ready,
                           recover_to_clean_state, wait_mcp_ready,
                           run_driver_load_verify)
   -> windbg-ext-mcp      (break_in, run_command, run_sequence, !analyze, lm)
@@ -35,8 +37,19 @@ only when the requested workflow is outside the exposed MCP tools.
    `guest.admin_password`. Ask the user or use `${env:VAR}` for secrets.
 4. If `vmmon64.exe` is configured but not running, call
    `driver-harness-mcp.start_vkd_monitor`.
-5. When host prerequisites are green and the VM is expected to be running, call
-   `driver-harness-mcp.wait_mcp_ready`, then verify with WinDbg `vertarget`.
+5. Before reverting/starting a VirtualKD guest, close stale harness-owned
+   WinDbg sessions with `driver-harness-mcp.cleanup_windbg_instances`.
+   Multiple old WinDbg processes can leave multiple `windbgmcp` pipe servers,
+   so the AI may connect to yesterday's debugger instead of the new snapshot.
+6. When host prerequisites are green and the VM is expected to be running, call
+   `driver-harness-mcp.wait_mcp_ready`, then call
+   `driver-harness-mcp.query_debugger_status`.
+7. Normalize the debugger state for the next step:
+   - Before guest/vmrun work, call
+     `driver-harness-mcp.ensure_debugger_ready(desired_state="running")`.
+   - Before WinDbg inspection commands such as `vertarget`, `lm`, `k`,
+     `.bugcheck`, or `.crash`, call
+     `driver-harness-mcp.ensure_debugger_ready(desired_state="broken")`.
 
 Use `diagnose_environment(check_guest=true)` when you need snapshot existence,
 VMware Tools, or guest credential checks. It is read-only.
@@ -100,6 +113,9 @@ Interpret the returned JSON:
 
 Use lower-level tools with these guardrails:
 
+- Do not infer WinDbg state from screenshots or prompt text. Use
+  `driver-harness-mcp.query_debugger_status`; if the status handler is
+  missing, install the current `windbgmcpExt.dll`.
 - Before inspection commands after `g`, call `windbg-ext-mcp.break_in`.
 - For long-running `g`, pass `timeout_ms` intentionally; it is the run window.
 - For `vmware-mcp.vmrun_run`, pass `args` as a JSON array, not a shell string.

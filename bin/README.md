@@ -7,7 +7,7 @@ a working C++ build environment to get started.
 
 | File | Size | Description |
 |---|---|---|
-| `windbgmcpExt.dll` | ~526 KB | WinDbg extension that exposes a JSON-over-named-pipe interface used by the MCP server. Loaded by WinDbg via `.load`. |
+| `windbgmcpExt.dll` | ~534 KB | WinDbg extension that exposes a JSON-over-named-pipe interface used by the MCP server. Loaded by WinDbg via `.load`. |
 | `windbgmcpExt.dll.sha256` | — | SHA-256 checksum of the DLL above. |
 
 ## Source of truth
@@ -16,8 +16,7 @@ The DLL is built from our fork of upstream `windbg-ext-mcp`:
 
 - Repo:   https://github.com/Letenz/windbg-ext-mcp
 - Branch: `driver-harness`
-- Commit: `dd4563a` (C++ extension source unchanged from the initial
-  `v0.1.0-dh.1` binary build; later changes add Python MCP tool wrappers)
+- Commit: `960655b`
 
 The same source is included in this repository as a Git submodule:
 
@@ -90,7 +89,7 @@ or simply close WinDbg.
 
 The single highest-impact thing this project promises is **30 minutes
 from clone to working AI-driven kernel-driver test loop**. Forcing
-every newcomer to install Visual Studio just to obtain a 526 KB DLL
+every newcomer to install Visual Studio just to obtain a 534 KB DLL
 makes that promise impossible to keep.
 
 The binary is small, the source is right next door (`third_party/`),

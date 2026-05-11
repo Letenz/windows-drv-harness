@@ -13,6 +13,12 @@ import sys
 
 from fastmcp import FastMCP
 
+from .tools.debugger import (
+    cleanup_windbg_instances,
+    ensure_debugger_ready,
+    list_windbg_processes,
+    query_debugger_status,
+)
 from .tools.driver_cycle import run_driver_load_verify
 from .tools.environment import diagnose_environment, start_vkd_monitor
 from .tools.recover_to_clean_state import recover_to_clean_state
@@ -29,6 +35,10 @@ def build_server() -> FastMCP:
     # vmware/windbg primitives; they encode the fragile guest/debugger timing.
     mcp.tool()(diagnose_environment)
     mcp.tool()(start_vkd_monitor)
+    mcp.tool()(list_windbg_processes)
+    mcp.tool()(cleanup_windbg_instances)
+    mcp.tool()(query_debugger_status)
+    mcp.tool()(ensure_debugger_ready)
     mcp.tool()(recover_to_clean_state)
     mcp.tool()(wait_mcp_ready)
     mcp.tool()(run_driver_load_verify)

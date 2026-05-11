@@ -61,6 +61,36 @@ The `-c .load` only fires after the kernel target is reachable. Check:
 If the extension is loaded but the pipe still missing, run `!mcpstart` manually
 in WinDbg's command window and watch its output.
 
+### B4. Every snapshot restore opens another WinDbg, and AI attaches to the wrong one
+VirtualKD can start a fresh WinDbg every time the debug snapshot is restored,
+while the old WinDbg stays alive in reconnect mode. If more than one WinDbg has
+`windbgmcpExt.dll`, `!mcpstart`, or `com:pipe` in its command line, multiple
+pipe servers may exist and the AI can connect to the stale session.
+
+Before reverting/starting the VM for automation, run:
+
+```text
+driver-harness-mcp.cleanup_windbg_instances(only_harness_mcp=true)
+```
+
+After `wait_mcp_ready`, run:
+
+```text
+driver-harness-mcp.query_debugger_status()
+```
+
+If the target is stopped at `kd>` but the next step is guest work, run:
+
+```text
+driver-harness-mcp.ensure_debugger_ready(desired_state="running")
+```
+
+If the next step is WinDbg inspection, use:
+
+```text
+driver-harness-mcp.ensure_debugger_ready(desired_state="broken")
+```
+
 ## C. Runtime phase — MCP client connection
 
 ### C1. AI client says "MCP server failed to start" or "no tools found"

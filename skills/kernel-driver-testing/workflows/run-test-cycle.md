@@ -18,14 +18,17 @@ Only use raw primitives when the requested scenario is not a simple load/unload
 test:
 
 1. `driver-harness-mcp.recover_to_clean_state`.
-2. `vmware-mcp.vmrun_copy_to` for drivers, test EXEs, configs, or symbols.
-3. `windbg-ext-mcp.run_command(command="g", timeout_ms=<run window>)` while the
+2. `driver-harness-mcp.ensure_debugger_ready(desired_state="running")` before
+   guest-side `vmrun` operations.
+3. `vmware-mcp.vmrun_copy_to` for drivers, test EXEs, configs, or symbols.
+4. `windbg-ext-mcp.run_command(command="g", timeout_ms=<run window>)` while the
    guest must run.
-4. `vmware-mcp.vmrun_run` using a JSON array for `args`.
-5. `windbg-ext-mcp.break_in` before inspection.
-6. `windbg-ext-mcp.run_command` for `lm`, `.dbgprint`, `.bugcheck`,
+5. `vmware-mcp.vmrun_run` using a JSON array for `args`.
+6. `driver-harness-mcp.ensure_debugger_ready(desired_state="broken")` before
+   inspection.
+7. `windbg-ext-mcp.run_command` for `lm`, `.dbgprint`, `.bugcheck`,
    `!analyze -v`, stack, registers, or memory inspection.
-7. Revert before the next iteration unless the user explicitly wants to keep
+8. Revert before the next iteration unless the user explicitly wants to keep
    the live debug state.
 
 Every cycle should start and end at the baseline snapshot.

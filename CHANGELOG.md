@@ -16,7 +16,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Doctor script for environment diagnostics
 - Claude Code CLI / Claude Desktop / Cursor MCP client config templates
 - Registry preset for VirtualKD-Redux auto-launch + MCP extension autoload
-- `bin/windbgmcpExt.dll` — precompiled WinDbg extension (Release|x64, /MT, no debug info, ~526 KB) so users can get going without installing Visual Studio. SHA-256 recorded in `bin/windbgmcpExt.dll.sha256`. Built from `Letenz/windbg-ext-mcp@48f044a` (matches the pinned submodule).
+- `bin/windbgmcpExt.dll` — precompiled WinDbg extension (Release|x64, /MT, no debug info, ~534 KB) so users can get going without installing Visual Studio. SHA-256 recorded in `bin/windbgmcpExt.dll.sha256`. Built from the pinned `Letenz/windbg-ext-mcp` submodule.
 - `third_party/vmware-mcp` and `third_party/windbg-ext-mcp` git submodules pinned to specific commits.
 
 ### Changed

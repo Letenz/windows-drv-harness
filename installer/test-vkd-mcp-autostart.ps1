@@ -77,7 +77,7 @@ $vmmon = Get-Process -Name vmmon64 -ErrorAction SilentlyContinue | Select-Object
 Add-Check 'vmmon64.exe running' ([bool]$vmmon -or -not $RequireVmmon) ($(if ($vmmon) { "$($vmmon.Id) $($vmmon.Path)" } else { 'not running' })) 'Start or restart vmmon64.exe after registry changes.'
 
 $pipeOk = Test-NamedPipe $PipeName
-Add-Check 'windbgmcp pipe available' ($pipeOk -or -not $RequirePipe) $PipeName 'Pipe appears only after vmmon64 starts WinDbg and !mcpstart runs.'
+Add-Check 'windbgmcp pipe available' ($pipeOk -or -not $RequirePipe) "available=$pipeOk; $PipeName" 'Pipe appears only after vmmon64 starts WinDbg and !mcpstart runs.'
 
 $checks | Format-Table -AutoSize
 

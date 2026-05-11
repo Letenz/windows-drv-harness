@@ -13,9 +13,18 @@ run failed before the driver code was exercised.
    `driver-harness-mcp.start_vkd_monitor`.
 4. If you need to prove the guest credentials and snapshot, call
    `driver-harness-mcp.diagnose_environment(check_guest=true)`.
-5. If a VM was started/reverted and WinDbg should be available, call
+5. Before starting or reverting a VirtualKD guest, call
+   `driver-harness-mcp.cleanup_windbg_instances(only_harness_mcp=true)`.
+   This closes stale WinDbg instances from previous snapshots so the MCP pipe
+   cannot attach to the wrong debugger.
+6. If a VM was started/reverted and WinDbg should be available, call
    `driver-harness-mcp.wait_mcp_ready(timeout_seconds=120)`.
-6. Confirm debugger health with `windbg-ext-mcp.run_command(command="vertarget")`.
+7. Call `driver-harness-mcp.query_debugger_status`.
+8. If the next step is guest execution, call
+   `driver-harness-mcp.ensure_debugger_ready(desired_state="running")`.
+   If the next step is WinDbg inspection, call
+   `driver-harness-mcp.ensure_debugger_ready(desired_state="broken")`, then
+   confirm with `windbg-ext-mcp.run_command(command="vertarget")`.
 
 Before starting `vmmon64`, always check the VirtualKD registry result from
 `diagnose_environment`: `DebuggerType` must be `2`, and
@@ -37,6 +46,11 @@ already-running monitor picked it up.
   host-side monitor that notices the VirtualKD debug event and launches WinDbg.
 - Missing `windbgmcp pipe`: the VM, VirtualKD monitor, WinDbg startup command,
   or extension load path is not ready. Do not continue to driver testing.
+- Multiple WinDbg instances: close stale harness-owned sessions before
+  reverting. Multiple pipe servers can make the AI talk to an old snapshot.
+- `query_debugger_status` missing or fails: install the current
+  `windbgmcpExt.dll`; older extension builds cannot report target state
+  without changing it.
 - `DebuggerType=3`: wrong for MCP automation. Set `DebuggerType=2` (Custom),
   keep the MCP `CustomDebuggerTemplate`, then restart `vmmon64.exe`.
 - Baseline flags false or unknown: the user must create a baseline snapshot

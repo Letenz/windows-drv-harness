@@ -40,7 +40,8 @@ def is_pipe_available(pipe_name: str = r"\\.\pipe\windbgmcp", timeout_ms: int = 
         import pywintypes
         import win32pipe
 
-        return bool(win32pipe.WaitNamedPipe(pipe_name, max(1, timeout_ms)))
+        win32pipe.WaitNamedPipe(pipe_name, max(1, timeout_ms))
+        return True
     except pywintypes.error as exc:
         code = getattr(exc, "winerror", exc.args[0] if exc.args else 0)
         return code == 231  # ERROR_PIPE_BUSY still means the server exists.

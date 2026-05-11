@@ -65,7 +65,9 @@ Existing components are great in isolation but **nothing glues them together**:
 2. **Pre-configured registry presets** for VirtualKD-Redux auto-launch with the MCP extension
 3. **Skills** (markdown knowledge base for AI) describing standard workflows and pitfalls
 4. **High-level MCP tools**: `diagnose_environment`, `start_vkd_monitor`,
-   `recover_to_clean_state`, `wait_mcp_ready`, `run_driver_load_verify`
+   `cleanup_windbg_instances`, `query_debugger_status`,
+   `ensure_debugger_ready`, `recover_to_clean_state`, `wait_mcp_ready`,
+   `run_driver_load_verify`
 5. **Verified working examples** — start with `examples/01-kernel-patch-bsod/`
 
 ## Quickstart
@@ -116,7 +118,7 @@ driver-harness-mcp/
 | Component | Repo | Notes |
 |---|---|---|
 | `vmware-mcp` | [`ZacharyZcR/vmware-mcp`](https://github.com/ZacharyZcR/vmware-mcp) | Used as-is via submodule |
-| `windbg-ext-mcp` | [`Letenz/windbg-ext-mcp`](https://github.com/Letenz/windbg-ext-mcp) (fork) | With two patches: SDDL pipe ACL + BreakInHandler. Patches will be submitted upstream. |
+| `windbg-ext-mcp` | [`Letenz/windbg-ext-mcp`](https://github.com/Letenz/windbg-ext-mcp) (fork) | With harness patches: SDDL pipe ACL, BreakInHandler, and debugger_status. Patches will be submitted upstream. |
 | `driver-harness-mcp` | This repo | New high-level MCP tools |
 | `VirtualKD-Redux` | [`4d61726b/VirtualKD-Redux`](https://github.com/4d61726b/VirtualKD-Redux) | User installs separately (it's an end-user tool) |
 

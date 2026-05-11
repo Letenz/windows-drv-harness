@@ -21,6 +21,9 @@ Optional input:
   validation.
 - `config_path`, `vmx_path`, `snapshot_name`, `guest_user`, `guest_password`,
   `vmrun_path`, `vmmon64_path`: pass only when overriding config.
+- `close_existing_windbg`: defaults to true. Keep it true for automated
+  snapshot loops so stale WinDbg/MCP pipe servers from previous runs are closed
+  before VirtualKD starts a fresh debugger.
 
 ## Interpretation
 
@@ -39,13 +42,14 @@ Optional input:
 If the high-level tool cannot represent the requested test, use primitives:
 
 1. `recover_to_clean_state`.
-2. `vmware-mcp.vmrun_copy_to`.
-3. `windbg-ext-mcp.run_command(command="g", timeout_ms=<run window>)`.
-4. `vmware-mcp.vmrun_run` with `args` as a JSON array.
-5. `windbg-ext-mcp.break_in`.
-6. `windbg-ext-mcp.run_command` for `lm`, `.dbgprint`, `.bugcheck`, or
+2. `driver-harness-mcp.ensure_debugger_ready(desired_state="running")`.
+3. `vmware-mcp.vmrun_copy_to`.
+4. `windbg-ext-mcp.run_command(command="g", timeout_ms=<run window>)`.
+5. `vmware-mcp.vmrun_run` with `args` as a JSON array.
+6. `driver-harness-mcp.ensure_debugger_ready(desired_state="broken")`.
+7. `windbg-ext-mcp.run_command` for `lm`, `.dbgprint`, `.bugcheck`, or
    `!analyze -v`.
-7. Revert before the next attempt.
+8. Revert before the next attempt.
 
 Do not pass `vmrun_run.args` as one shell string for service creation. Use an
 array so `type=`, `start=`, and `binPath=` remain distinct arguments.
