@@ -23,6 +23,8 @@ Optional input:
   validation.
 - `config_path`, `vmx_path`, `snapshot_name`, `guest_user`, `guest_password`,
   `vmrun_path`, `vmmon64_path`: pass only when overriding config.
+- `ensure_vmmon`: defaults to true. Keep it true so `vmmon64.exe` is running
+  before the snapshot restore/start.
 - `close_existing_windbg`: defaults to true. Keep it true for automated
   snapshot loops so stale WinDbg/MCP pipe servers from previous runs are closed
   before VirtualKD starts a fresh debugger.
@@ -43,7 +45,7 @@ Optional input:
 
 If the high-level tool cannot represent the requested test, use primitives:
 
-1. `recover_to_clean_state`.
+1. `recover_to_clean_state` with `ensure_vmmon=true` (default).
 2. `driver-harness-mcp.ensure_debugger_ready(desired_state="running")`.
 3. `vmware-mcp.vmrun_copy_to`.
 4. `windbg-ext-mcp.run_command(command="g", timeout_ms=<run window>)`.

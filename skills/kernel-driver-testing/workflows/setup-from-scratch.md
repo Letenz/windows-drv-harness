@@ -92,6 +92,12 @@ The installer should have written the registry already, but the user needs to
 - "Custom" is selected
 - The custom command box matches what's in `presets/registry/vkd-redux-monitor-template.reg`
 
+If the path is not configured, ask the user for the full `vmmon64.exe` path
+and write it to `host.vmmon64_path`. The AI can start/restart vmmon after that
+path is known. For the smoothest closed loop, ask the user to run the current
+agent/session as Administrator; otherwise registry repair and reliable vmmon
+restart may need a manual elevated shell.
+
 Do not accept `DebuggerType=3` here. MCP automation requires
 `DebuggerType=2` (Custom), because `vmmon64.exe` uses this registry value to
 decide how it auto-starts WinDbg. If it starts WinDbg through the non-custom

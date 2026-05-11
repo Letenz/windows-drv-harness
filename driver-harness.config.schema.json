@@ -75,7 +75,7 @@
         },
         "vmmon64_path": {
           "type": "string",
-          "description": "Absolute path to VirtualKD-Redux's vmmon64.exe. Empty string = let AI probe; if probing fails, ask the user for the path. Starting/restarting vmmon64.exe and writing HKLM work best from an elevated/admin agent session.",
+          "description": "Absolute path to VirtualKD-Redux's vmmon64.exe. Empty string = let AI probe; if probing fails, ask the user for the path. vmmon64.exe must be running before VirtualKD snapshot restore/start. Starting/restarting vmmon64.exe and writing HKLM work best from an elevated/admin agent session.",
           "default": ""
         },
         "vmnet8_ip": {

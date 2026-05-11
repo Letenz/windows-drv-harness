@@ -97,6 +97,8 @@
       "Absolute path to VirtualKD-Redux's `vmmon64.exe`. Same rule as above.",
       "If empty, the AI may probe common locations. If probing fails, give the",
       "path to the AI and let it write the confirmed value here.",
+      "vmmon64.exe must be running before the AI restores/starts a VirtualKD",
+      "snapshot, because it is the host monitor that auto-launches WinDbg.",
       "Starting/restarting vmmon64.exe and writing HKLM registry values work best",
       "when the current AI agent/session is running as Administrator.",
       "Typical location:",

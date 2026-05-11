@@ -107,6 +107,12 @@ fill in:
 You can also leave `host.vmrun_path` / `host.vmmon64_path` empty and
 let your AI assistant fill them in by probing your filesystem.
 
+For the best closed loop, run the current AI agent/session as Administrator.
+That lets the harness write the VirtualKD HKLM registry values and reliably
+start/restart `vmmon64.exe`. If you do not grant elevation, the AI can still
+diagnose, but it may need you to start `vmmon64.exe` manually before a snapshot
+restore.
+
 > 💡 **Don't worry about getting it perfect right now.** The
 > [`setup-from-scratch.md`](../skills/kernel-driver-testing/workflows/setup-from-scratch.md)
 > workflow describes how an AI walks a user through this in chat.

@@ -32,6 +32,21 @@ def _tasklist_contains(image_name: str) -> bool:
     return image_name.lower() in (proc.stdout or "").lower()
 
 
+def is_process_elevated() -> bool:
+    """Return whether the current agent process is running elevated/admin."""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+    geteuid = getattr(os, "geteuid", None)
+    if callable(geteuid):
+        return geteuid() == 0
+    return False
+
+
 def is_pipe_available(pipe_name: str = r"\\.\pipe\windbgmcp", timeout_ms: int = 50) -> bool:
     """Return whether a Windows named pipe exists or has a connectable instance."""
     if os.name != "nt":
@@ -104,10 +119,50 @@ def probe_vmmon64_path(config: dict[str, Any] | None = None, explicit: str = "")
         r"C:\Program Files\VirtualKD-Redux\vmmon64.exe",
         r"C:\Program Files (x86)\VirtualKD-Redux\vmmon64.exe",
     ]
+    candidates.extend(_probe_vmmon64_download_candidates())
     for path in candidates:
         if path and Path(path).is_file():
             return path
     return ""
+
+
+def _probe_vmmon64_download_candidates() -> list[str]:
+    """Find common extracted VirtualKD-Redux folders without scanning whole drives."""
+    roots = [
+        Path.home() / "Downloads",
+        Path.home() / "downloads",
+        Path.home() / "download",
+        Path(r"C:\tools"),
+        Path(r"C:\download"),
+        Path(r"C:\downloads"),
+        Path(r"D:\tools"),
+        Path(r"D:\download"),
+        Path(r"D:\downloads"),
+        Path(r"E:\tools"),
+        Path(r"E:\download"),
+        Path(r"E:\downloads"),
+        Path(r"F:\tools"),
+        Path(r"F:\download"),
+        Path(r"F:\downloads"),
+    ]
+    paths: list[str] = []
+    seen: set[str] = set()
+    for root in roots:
+        if not root.exists():
+            continue
+        direct = root / "vmmon64.exe"
+        if str(direct).lower() not in seen:
+            paths.append(str(direct))
+            seen.add(str(direct).lower())
+        try:
+            for candidate in root.glob("VirtualKD-Redux*/vmmon64.exe"):
+                key = str(candidate).lower()
+                if key not in seen:
+                    paths.append(str(candidate))
+                    seen.add(key)
+        except OSError:
+            continue
+    return paths
 
 
 def _programdata() -> Path:
@@ -181,6 +236,7 @@ def diagnose_environment(
     vkd_flag = config_bool(config, "flags.guest_vkd_installed")
     kdnet_flag = config_bool(config, "flags.guest_kdnet_configured")
     testsigning_flag = config_bool(config, "flags.guest_testsigning_enabled")
+    elevated = is_process_elevated()
 
     checks: list[dict[str, Any]] = [
         _check("config file", bool(config), str(config_path or repo_root() / "driver-harness.config.json"),
@@ -212,6 +268,13 @@ def diagnose_environment(
         _check("vmmon64.exe path", bool(vmmon), vmmon, "Set host.vmmon64_path."),
         _check("vmmon64.exe running", _tasklist_contains("vmmon64.exe"), "",
                "Launch vmmon64.exe before starting a debug-enabled guest."),
+        _check(
+            "agent elevated/admin",
+            elevated,
+            str(elevated).lower(),
+            "Run the current agent/session as Administrator for HKLM registry writes "
+            "and reliable vmmon restart.",
+        ),
         _check("windbgmcpExt.dll", bool(ext_dll), ext_dll,
                "Run installer\\install.ps1 or set DRIVER_HARNESS_EXT_DLL."),
         _check("windbgmcp pipe", is_pipe_available(pipe_name), pipe_name,
@@ -372,6 +435,7 @@ def start_vkd_monitor(
     if os.name != "nt":
         return {"ok": False, "message": "VirtualKD monitor is Windows-only."}
 
+    elevated = is_process_elevated()
     registry_ok, registry_detail, registry_hint = _validate_vkd_registry_for_mcp()
     if not registry_ok:
         return {
@@ -379,13 +443,18 @@ def start_vkd_monitor(
             "message": "VirtualKD registry is not configured for WinDbg MCP autostart.",
             "detail": registry_detail,
             "hint": registry_hint,
+            "agent_elevated": elevated,
         }
 
     if _tasklist_contains("vmmon64.exe"):
         return {
             "ok": True,
-            "message": "vmmon64.exe is already running. If the VKD registry was just changed, restart vmmon64.exe before restoring/starting the VM.",
+            "message": (
+                "vmmon64.exe is already running. If the VKD registry was just changed, "
+                "restart vmmon64.exe before restoring/starting the VM."
+            ),
             "already_running": True,
+            "agent_elevated": elevated,
         }
 
     config = load_config(config_path or None, required=False)
@@ -394,22 +463,45 @@ def start_vkd_monitor(
         return {
             "ok": False,
             "message": "vmmon64.exe not found.",
-            "hint": "Set host.vmmon64_path in driver-harness.config.json.",
+            "hint": (
+                "Ask the user for vmmon64.exe, then set host.vmmon64_path in "
+                "driver-harness.config.json."
+            ),
+            "agent_elevated": elevated,
         }
 
     try:
         creationflags = 0
         if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
             creationflags |= subprocess.CREATE_NEW_PROCESS_GROUP
-        proc = subprocess.Popen([vmmon], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                creationflags=creationflags)
+        proc = subprocess.Popen(
+            [vmmon],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
     except Exception as exc:
-        return {"ok": False, "message": f"failed to launch vmmon64.exe: {exc}", "path": vmmon}
+        return {
+            "ok": False,
+            "message": f"failed to launch vmmon64.exe: {exc}",
+            "path": vmmon,
+            "hint": (
+                "Run the current agent/session as Administrator, or start "
+                "vmmon64.exe manually before restoring the VM."
+            ),
+            "agent_elevated": elevated,
+        }
 
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
         if _tasklist_contains("vmmon64.exe"):
-            return {"ok": True, "message": "vmmon64.exe started.", "path": vmmon, "pid": proc.pid}
+            return {
+                "ok": True,
+                "message": "vmmon64.exe started.",
+                "path": vmmon,
+                "pid": proc.pid,
+                "agent_elevated": elevated,
+            }
         time.sleep(0.25)
 
     return {
@@ -417,4 +509,9 @@ def start_vkd_monitor(
         "message": "vmmon64.exe was launched but was not observed in tasklist.",
         "path": vmmon,
         "pid": proc.pid,
+        "hint": (
+            "If the process required UAC, rerun the current agent/session as "
+            "Administrator or start vmmon64.exe manually."
+        ),
+        "agent_elevated": elevated,
     }

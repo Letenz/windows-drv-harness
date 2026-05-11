@@ -11,7 +11,8 @@ run failed before the driver code was exercised.
    snapshot must enter a debug-ready guest state once host `vmmon64.exe` is
    running; if not, stop and ask the user to rebuild the baseline. KDNET is
    acceptable only when the VM is explicitly configured for KDNET.
-3. If host checks are green but `vmmon64.exe running` is false, call
+3. Before any VM restore/start, make `vmmon64.exe` ready. If host checks are
+   green but `vmmon64.exe running` is false, call
    `driver-harness-mcp.start_vkd_monitor`. If `host.vmmon64_path` is empty,
    probe common VirtualKD-Redux folders; if probing fails, ask the user for the
    `vmmon64.exe` path and save it in config. Prefer running the current agent
@@ -51,6 +52,9 @@ already-running monitor picked it up.
   vmmon once the path is known; admin/elevated agent rights are recommended.
 - `vmmon64.exe` stopped: start it before reverting/starting the VM. It is the
   host-side monitor that notices the VirtualKD debug event and launches WinDbg.
+- Agent not elevated/admin: OK for read-only diagnosis, but not ideal for the
+  closed loop. Ask the user to rerun the current agent/session as Administrator
+  if registry repair or reliable vmmon restart is needed.
 - Access denied while writing VKD registry or starting/stopping vmmon: ask the
   user to rerun the agent as Administrator or perform that single host step in
   an elevated shell.

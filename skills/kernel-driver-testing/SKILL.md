@@ -35,13 +35,15 @@ artifacts, or when the requested workflow is outside the exposed MCP tools.
    `driver-harness.config.json` from `driver-harness.config.example.json`.
 3. Do not guess `vm.vmx_path`, `vm.baseline_snapshot`, `guest.admin_user`, or
    `guest.admin_password`. Ask the user or use `${env:VAR}` for secrets.
-4. If `vmmon64.exe` is configured but not running, call
+4. Before any VirtualKD VM restore/start, ensure `vmmon64.exe` is already
+   running. If it is configured but stopped, call
    `driver-harness-mcp.start_vkd_monitor`. If `host.vmmon64_path` is empty,
    probe common VirtualKD-Redux locations; if probing fails, ask the user for
    the `vmmon64.exe` path and write it into `driver-harness.config.json`.
    For fully automated registry/vmmon management, tell the user the current
-   agent should run elevated/as Administrator. If the agent is not elevated,
-   ask the user to start `vmmon64.exe` manually or rerun the agent as admin.
+   agent should run elevated/as Administrator. If the agent is not elevated and
+   vmmon cannot be controlled, ask the user to start `vmmon64.exe` manually or
+   rerun the current agent/session as admin.
 5. Before reverting/starting a VirtualKD guest, close stale harness-owned
    WinDbg sessions with `driver-harness-mcp.cleanup_windbg_instances`.
    Multiple old WinDbg processes can leave multiple `windbgmcp` pipe servers,
@@ -87,6 +89,11 @@ Startup order for VirtualKD automation:
 3. Start `vmmon64.exe`.
 4. Revert/start the VM. `vmmon64.exe` must already be running so it can observe
    the VirtualKD event and auto-launch WinDbg with MCP.
+
+`driver-harness-mcp.recover_to_clean_state` and
+`driver-harness-mcp.run_driver_load_verify` perform the vmmon preflight by
+default. Prefer them over raw `vmware-mcp` snapshot/start calls unless the user
+explicitly asks for primitive control.
 
 ## Standard Workflows
 
@@ -149,6 +156,8 @@ Use lower-level tools with these guardrails:
   after guest VirtualKD two-machine debugging is configured and confirmed.
 - Do not revert/start the VM while `vmmon64.exe` is stopped and expect WinDbg to
   appear automatically.
+- Do not use raw `vmware-mcp` restore/start calls before `start_vkd_monitor`
+  succeeds or the user confirms vmmon is already running.
 - Do not change VKD registry values while leaving an old `vmmon64.exe` instance
   running; stop it first, then restart it after the registry write.
 - Do not hardcode VM paths, credentials, usernames, or IPs in generated files.

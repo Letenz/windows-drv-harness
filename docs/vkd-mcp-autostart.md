@@ -38,6 +38,11 @@ If it is stopped, it will not observe the VM event and will not auto-launch
 WinDbg. A running monitor may keep using the old launch configuration after a
 registry edit, so restart it after every registry change.
 
+For AI agents, this is not optional setup prose. Treat it as a preflight:
+before any snapshot restore or VM start, call
+`driver-harness-mcp.start_vkd_monitor` or use a high-level tool that does so
+by default (`recover_to_clean_state` or `run_driver_load_verify`).
+
 The AI can manage `vmmon64.exe` when it knows the path. Put the confirmed path
 in `host.vmmon64_path` in `driver-harness.config.json`, or let the AI probe
 common VirtualKD-Redux locations and ask you when probing fails. For the
