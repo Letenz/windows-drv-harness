@@ -105,7 +105,9 @@ fill in:
 - `guest.admin_user` / `guest.admin_password` — guest admin credentials
 
 You can also leave `host.vmrun_path` / `host.vmmon64_path` empty and
-let your AI assistant fill them in by probing your filesystem.
+let your AI assistant fill them in by checking env vars, registry values, and
+fixed default install paths. If those checks fail, it should ask you for the
+path rather than scanning the whole disk.
 
 For the best closed loop, run the current AI agent/session as Administrator.
 That lets the harness write the VirtualKD HKLM registry values and reliably

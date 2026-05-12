@@ -113,7 +113,8 @@ Useful prompts:
 ```text
 Read AI_ENTRYPOINT.md and use the kernel-driver-testing skill. Diagnose the
 harness environment first. Do not restore/start the VM until vmmon64.exe is
-running, and ask me for the vmmon64.exe path if you cannot find it.
+running. Probe only config/env/registry/default paths for missing tools; do not
+scan whole drives. Ask me for the vmmon64.exe path if you cannot find it.
 ```
 
 ```text

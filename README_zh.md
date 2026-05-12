@@ -112,6 +112,7 @@ README 是给人看的概览。真正让 AI 执行时，请让它把
 ```text
 请先阅读 AI_ENTRYPOINT.md，并使用 kernel-driver-testing skill。
 先诊断 harness 环境。恢复/启动 VM 前必须确保 vmmon64.exe 已经运行；
+缺工具路径时只检查配置/环境变量/注册表/默认安装路径，不要全盘扫描；
 如果找不到 vmmon64.exe 路径，请问我，然后写入 driver-harness.config.json。
 ```
 

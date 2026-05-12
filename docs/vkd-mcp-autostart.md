@@ -45,7 +45,9 @@ by default (`recover_to_clean_state` or `run_driver_load_verify`).
 
 The AI can manage `vmmon64.exe` when it knows the path. Put the confirmed path
 in `host.vmmon64_path` in `driver-harness.config.json`, or let the AI probe
-common VirtualKD-Redux locations and ask you when probing fails. For the
+only explicit inputs, environment variables, registry values, and fixed default
+install paths. It should not recursively scan drives or broad folders; if
+bounded probing fails, it should ask you for the path. For the
 smoothest closed loop, run the current agent/session elevated as Administrator:
 writing `HKLM\Software\VirtualKD-Redux\Monitor` and reliably stopping/starting
 `vmmon64.exe` are host admin operations. If the agent is not elevated, it should

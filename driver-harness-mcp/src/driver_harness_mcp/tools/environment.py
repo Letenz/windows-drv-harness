@@ -116,53 +116,35 @@ def probe_vmmon64_path(config: dict[str, Any] | None = None, explicit: str = "")
         config_value(config, "host.vmmon64_path"),
         os.environ.get("DRIVER_HARNESS_VMMON64", ""),
         os.environ.get("VMMON64_PATH", ""),
+        _probe_registry_value(
+            r"HKEY_LOCAL_MACHINE\Software\VirtualKD-Redux\Monitor",
+            "InstallPath",
+        ),
+        _probe_registry_value(
+            r"HKEY_CURRENT_USER\Software\VirtualKD-Redux\Monitor",
+            "InstallPath",
+        ),
         r"C:\Program Files\VirtualKD-Redux\vmmon64.exe",
         r"C:\Program Files (x86)\VirtualKD-Redux\vmmon64.exe",
     ]
-    candidates.extend(_probe_vmmon64_download_candidates())
-    for path in candidates:
-        if path and Path(path).is_file():
+    return _first_existing_executable(candidates, "vmmon64.exe")
+
+
+def _first_existing_executable(candidates: list[str], executable_name: str) -> str:
+    """Check explicit/default paths only; never scan drives or recurse."""
+    expanded: list[str] = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if candidate.lower().endswith(executable_name.lower()):
+            expanded.append(candidate)
+        else:
+            expanded.append(str(Path(candidate) / executable_name))
+
+    for path in expanded:
+        if Path(path).is_file():
             return path
     return ""
-
-
-def _probe_vmmon64_download_candidates() -> list[str]:
-    """Find common extracted VirtualKD-Redux folders without scanning whole drives."""
-    roots = [
-        Path.home() / "Downloads",
-        Path.home() / "downloads",
-        Path.home() / "download",
-        Path(r"C:\tools"),
-        Path(r"C:\download"),
-        Path(r"C:\downloads"),
-        Path(r"D:\tools"),
-        Path(r"D:\download"),
-        Path(r"D:\downloads"),
-        Path(r"E:\tools"),
-        Path(r"E:\download"),
-        Path(r"E:\downloads"),
-        Path(r"F:\tools"),
-        Path(r"F:\download"),
-        Path(r"F:\downloads"),
-    ]
-    paths: list[str] = []
-    seen: set[str] = set()
-    for root in roots:
-        if not root.exists():
-            continue
-        direct = root / "vmmon64.exe"
-        if str(direct).lower() not in seen:
-            paths.append(str(direct))
-            seen.add(str(direct).lower())
-        try:
-            for candidate in root.glob("VirtualKD-Redux*/vmmon64.exe"):
-                key = str(candidate).lower()
-                if key not in seen:
-                    paths.append(str(candidate))
-                    seen.add(key)
-        except OSError:
-            continue
-    return paths
 
 
 def _programdata() -> Path:
@@ -264,8 +246,19 @@ def diagnose_environment(
         _check("guest.admin_user", bool(user), user, "Set guest.admin_user."),
         _check("guest.admin_password", bool(password), "***" if password else "",
                "Set guest.admin_password or its referenced environment variable."),
-        _check("vmrun.exe", bool(vmrun), vmrun, "Set VMRUN_PATH or host.vmrun_path."),
-        _check("vmmon64.exe path", bool(vmmon), vmmon, "Set host.vmmon64_path."),
+        _check(
+            "vmrun.exe",
+            bool(vmrun),
+            vmrun,
+            "Set VMRUN_PATH or host.vmrun_path; do not scan the whole disk.",
+        ),
+        _check(
+            "vmmon64.exe path",
+            bool(vmmon),
+            vmmon,
+            "Ask the user for vmmon64.exe and set host.vmmon64_path; "
+            "do not scan the whole disk.",
+        ),
         _check("vmmon64.exe running", _tasklist_contains("vmmon64.exe"), "",
                "Launch vmmon64.exe before starting a debug-enabled guest."),
         _check(
@@ -465,7 +458,7 @@ def start_vkd_monitor(
             "message": "vmmon64.exe not found.",
             "hint": (
                 "Ask the user for vmmon64.exe, then set host.vmmon64_path in "
-                "driver-harness.config.json."
+                "driver-harness.config.json. Do not scan the whole disk."
             ),
             "agent_elevated": elevated,
         }

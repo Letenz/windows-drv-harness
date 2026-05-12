@@ -14,9 +14,11 @@ Core operating rules:
 2. Before any VM restore/start, make `vmmon64.exe` ready first. It must already
    be running when the VM reaches the VirtualKD debug path, because it observes
    that event and auto-launches WinDbg.
-3. If `host.vmmon64_path` is empty, probe common VirtualKD-Redux locations. If
-   probing fails, ask the user for the `vmmon64.exe` path and write the
-   confirmed value to `driver-harness.config.json`.
+3. If `host.vmmon64_path` is empty, probe only explicit inputs, environment
+   variables, registry values, and fixed default install paths. Never run
+   recursive or drive-wide filesystem searches. If probing fails, ask the user
+   for the `vmmon64.exe` path and write the confirmed value to
+   `driver-harness.config.json`.
 4. For a closed loop, ask the user to run the current agent/session as
    Administrator. HKLM registry writes and reliable vmmon restart are elevated
    host operations.

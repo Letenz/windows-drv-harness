@@ -67,8 +67,9 @@ them into the file for them:
   `${env:DRIVER_HARNESS_GUEST_PASSWORD}` form and have them `$env:...`-set it
   in their shell, so the password doesn't sit in a file.
 
-Leave `host.*` empty — you'll fill those in by probing the filesystem
-later, and only ask the user if probing fails.
+Leave `host.*` empty — you'll fill those in by checking explicit inputs,
+environment variables, registry values, and fixed default install paths. Do not
+scan whole drives or broad folders; ask the user if bounded probing fails.
 
 ## Step 4 — Configure the guest
 

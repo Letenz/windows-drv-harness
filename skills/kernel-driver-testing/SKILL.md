@@ -38,8 +38,10 @@ artifacts, or when the requested workflow is outside the exposed MCP tools.
 4. Before any VirtualKD VM restore/start, ensure `vmmon64.exe` is already
    running. If it is configured but stopped, call
    `driver-harness-mcp.start_vkd_monitor`. If `host.vmmon64_path` is empty,
-   probe common VirtualKD-Redux locations; if probing fails, ask the user for
-   the `vmmon64.exe` path and write it into `driver-harness.config.json`.
+   probe only explicit inputs, environment variables, registry values, and fixed
+   default install paths. Do not run recursive or drive-wide filesystem
+   searches. If probing fails, ask the user for the `vmmon64.exe` path and
+   write it into `driver-harness.config.json`.
    For fully automated registry/vmmon management, tell the user the current
    agent should run elevated/as Administrator. If the agent is not elevated and
    vmmon cannot be controlled, ask the user to start `vmmon64.exe` manually or
@@ -150,6 +152,9 @@ Use lower-level tools with these guardrails:
   `CustomDebuggerTemplate` contains `windbgmcpExt.dll` and `!mcpstart`.
 - Do not guess `vmmon64.exe` when probing fails. Ask the user for the path and
   store it in `host.vmmon64_path`.
+- Do not search whole drives, user profiles, download folders, or arbitrary
+  tool directories for missing host tools. Use config/env/registry/default paths
+  only, then ask the user.
 - Do not silently continue if HKLM/vmmon control needs admin rights and the
   current agent is not elevated.
 - Do not treat a normal Windows snapshot as valid. The baseline must be taken

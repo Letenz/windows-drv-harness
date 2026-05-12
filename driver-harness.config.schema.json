@@ -65,17 +65,17 @@
 
     "host": {
       "type": "object",
-      "description": "Tool paths on the host. Empty strings mean 'let the AI probe and fill in.'",
+      "description": "Tool paths on the host. Empty strings mean 'let the AI probe config/env/registry/default paths and fill in'. The AI should not scan whole drives; if bounded probing fails, it should ask the user.",
       "additionalProperties": true,
       "properties": {
         "vmrun_path": {
           "type": "string",
-          "description": "Absolute path to vmrun.exe. Empty string = let AI probe default locations.",
+          "description": "Absolute path to vmrun.exe. Empty string = let AI probe env vars, VMware registry keys, and default install locations; no drive-wide scans.",
           "default": ""
         },
         "vmmon64_path": {
           "type": "string",
-          "description": "Absolute path to VirtualKD-Redux's vmmon64.exe. Empty string = let AI probe; if probing fails, ask the user for the path. vmmon64.exe must be running before VirtualKD snapshot restore/start. Starting/restarting vmmon64.exe and writing HKLM work best from an elevated/admin agent session.",
+          "description": "Absolute path to VirtualKD-Redux's vmmon64.exe. Empty string = let AI probe env vars, registry values, and fixed default install locations only; if probing fails, ask the user for the path. vmmon64.exe must be running before VirtualKD snapshot restore/start. Starting/restarting vmmon64.exe and writing HKLM work best from an elevated/admin agent session.",
           "default": ""
         },
         "vmnet8_ip": {

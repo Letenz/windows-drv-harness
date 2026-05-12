@@ -11,8 +11,9 @@
     "",
     "WHO FILLS THIS IN:",
     "  - Most fields: you, the human operator.",
-    "  - Some host paths: your AI assistant can probe and propose values.",
-    "    (If the AI finds a likely path, it should ASK YOU to confirm before writing.)",
+    "  - Some host paths: your AI assistant can probe config/env/registry/default paths.",
+    "    It should NOT scan whole drives or broad folders.",
+    "    If bounded probing fails, it should ASK YOU for the path.",
     "",
     "ALL FIELDS USE ABSOLUTE PATHS. Forward OR back slashes both work in JSON",
     "as long as backslashes are escaped: `C:\\\\VMs\\\\test.vmx` or `C:/VMs/test.vmx`.",
@@ -80,23 +81,24 @@
 
   "host": {
     "_comment": [
-      "Tool paths on the host. Your AI can probe defaults AND search the",
-      "filesystem / registry if those fail. If AI still cannot find a tool",
-      "it should ASK YOU for the path and write your answer back here."
+      "Tool paths on the host. Your AI can probe explicit inputs, env vars,",
+      "registry values, and fixed default install paths. It should not run",
+      "recursive or drive-wide filesystem searches. If AI still cannot find a",
+      "tool, it should ASK YOU for the path and write your answer back here."
     ],
     "vmrun_path": "",
     "_comment_vmrun_path": [
       "Absolute path to `vmrun.exe`. Leave empty to let the AI/installer",
       "probe the common locations (`C:\\Program Files (x86)\\VMware\\...`,",
-      "`C:\\Program Files\\VMware\\...`). If VMware is installed somewhere",
-      "unusual (e.g. `E:\\tools\\vmware\\`), the AI will find it and populate",
-      "this field."
+      "`C:\\Program Files\\VMware\\...`) and VMware registry keys. If VMware",
+      "is installed somewhere unusual, the AI should ask you for the path."
     ],
     "vmmon64_path": "",
     "_comment_vmmon64_path": [
       "Absolute path to VirtualKD-Redux's `vmmon64.exe`. Same rule as above.",
-      "If empty, the AI may probe common locations. If probing fails, give the",
-      "path to the AI and let it write the confirmed value here.",
+      "If empty, the AI may probe env vars, registry values, and default install",
+      "paths only. If probing fails, give the path to the AI and let it write",
+      "the confirmed value here.",
       "vmmon64.exe must be running before the AI restores/starts a VirtualKD",
       "snapshot, because it is the host monitor that auto-launches WinDbg.",
       "Starting/restarting vmmon64.exe and writing HKLM registry values work best",

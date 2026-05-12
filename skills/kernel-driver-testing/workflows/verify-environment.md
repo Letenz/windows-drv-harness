@@ -14,10 +14,11 @@ run failed before the driver code was exercised.
 3. Before any VM restore/start, make `vmmon64.exe` ready. If host checks are
    green but `vmmon64.exe running` is false, call
    `driver-harness-mcp.start_vkd_monitor`. If `host.vmmon64_path` is empty,
-   probe common VirtualKD-Redux folders; if probing fails, ask the user for the
-   `vmmon64.exe` path and save it in config. Prefer running the current agent
-   elevated/as Administrator so it can start/restart `vmmon64.exe` and repair
-   HKLM registry settings without handing control back to the user.
+   probe only config/env/registry/fixed default paths; do not recursively scan
+   drives or folders. If probing fails, ask the user for the `vmmon64.exe` path
+   and save it in config. Prefer running the current agent elevated/as
+   Administrator so it can start/restart `vmmon64.exe` and repair HKLM registry
+   settings without handing control back to the user.
 4. If you need to prove the guest credentials and snapshot, call
    `driver-harness-mcp.diagnose_environment(check_guest=true)`.
 5. Before starting or reverting a VirtualKD guest, call
@@ -46,10 +47,11 @@ already-running monitor picked it up.
   the four non-guessable values: VMX path, baseline snapshot, guest admin user,
   and guest admin password or env-var reference.
 - Missing `vmrun.exe`: use the diagnosed path hint, `VMRUN_PATH`, or
-  `host.vmrun_path`.
+  `host.vmrun_path`. Do not search the whole disk for VMware tools.
 - Missing `vmmon64.exe`: ask for the VirtualKD-Redux install folder, then write
   `host.vmmon64_path` after the user confirms the path. The AI can manage
   vmmon once the path is known; admin/elevated agent rights are recommended.
+  Do not search whole drives, download folders, or arbitrary tool folders.
 - `vmmon64.exe` stopped: start it before reverting/starting the VM. It is the
   host-side monitor that notices the VirtualKD debug event and launches WinDbg.
 - Agent not elevated/admin: OK for read-only diagnosis, but not ideal for the
