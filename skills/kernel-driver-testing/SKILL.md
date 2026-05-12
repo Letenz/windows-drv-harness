@@ -157,6 +157,8 @@ Use lower-level tools with these guardrails:
   only, then ask the user.
 - Do not silently continue if HKLM/vmmon control needs admin rights and the
   current agent is not elevated.
+- Do not register MCP servers or copy/install skills into the current
+  agent/client until the user explicitly confirms.
 - Do not treat a normal Windows snapshot as valid. The baseline must be taken
   after guest VirtualKD two-machine debugging is configured and confirmed.
 - Do not revert/start the VM while `vmmon64.exe` is stopped and expect WinDbg to

@@ -166,6 +166,10 @@ Claude / Cursor 以及其他支持 MCP 的客户端。
 对 AI agent 来说，skill 和 `AI_ENTRYPOINT.md` 才是权威执行规则；上面的
 提示词只是方便人开始一次会话。
 
+环境搭建成功后，AI 应先询问你是否要把 `kernel-driver-testing` skill 以及
+`driver-harness` / `windbg` / `vmware` MCP servers 注册到当前 agent/client；
+确认后才合并配置，不能直接覆盖。
+
 ## 许可证
 
 [MIT](./LICENSE) —— 自由使用，欢迎贡献。

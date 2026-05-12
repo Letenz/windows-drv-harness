@@ -168,6 +168,10 @@ with Claude, Cursor, and other MCP-aware clients.
 For agents, the skill and `AI_ENTRYPOINT.md` are canonical. The prompt examples
 above are just a human-friendly way to start a session.
 
+After setup succeeds, an AI assistant should ask before registering the
+`kernel-driver-testing` skill and the `driver-harness` / `windbg` / `vmware`
+MCP servers with your current agent/client.
+
 ## License
 
 [MIT](./LICENSE) — Use freely, contributions welcome.

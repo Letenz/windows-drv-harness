@@ -115,7 +115,33 @@ If changing the VKD registry, use this order:
 `vmmon64.exe` must be running before the VM restore/start event; otherwise it
 does not observe VirtualKD and will not auto-launch WinDbg.
 
-## Step 6 — Configure their AI client
+## Step 6 — Offer to register this repo with the current agent/client
+
+After the installer, config, VirtualKD host setup, and `diagnose_environment`
+are green, ask the user:
+
+> "Do you want me to register the `kernel-driver-testing` skill and the
+> required MCP servers (`driver-harness`, `windbg`, `vmware`) with your current
+> AI agent/client now?"
+
+Only proceed if the user confirms. If they say no, keep the repo usable through
+manual docs and do not edit their agent/client config.
+
+When they confirm:
+
+- Register or copy `skills/kernel-driver-testing/` into the current agent's
+  skill location, or point the agent at this repo's skill if the client supports
+  repository-local skills.
+- Pick the right MCP config from `presets/mcp-client-config/`:
+  `claude-code-cli.json`, `claude-desktop.json`, or `cursor.json`.
+- Replace `<REPO_ROOT>` with the absolute repo path.
+- Preserve existing MCP entries and skill config. Merge/append only; never
+  overwrite the whole client config.
+- If the current agent/client config path is unknown, ask the user for it.
+- If the agent/client requires restart/reload to discover new tools or skills,
+  tell the user exactly that.
+
+## Step 7 — Configure their AI client manually
 
 Pick the right config from `presets/mcp-client-config/`:
 - `claude-code-cli.json`
@@ -124,7 +150,7 @@ Pick the right config from `presets/mcp-client-config/`:
 
 Help them merge it into their existing client config (don't overwrite — append).
 
-## Step 7 — Smoke test
+## Step 8 — Smoke test
 
 First verify the structured status:
 
@@ -147,7 +173,7 @@ If it works: 🎉 setup is complete, point them to other examples.
 
 If it fails: walk them through troubleshooting. Don't keep retrying blindly.
 
-## Step 8 — Hand-off
+## Step 9 — Hand-off
 
 Once smoke test passes, tell the user:
 

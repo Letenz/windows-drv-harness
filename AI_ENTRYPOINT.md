@@ -41,3 +41,7 @@ Core operating rules:
 10. For ordinary driver load/unload tests, prefer
    `driver-harness-mcp.run_driver_load_verify`. Generate scripts when the user
    asks for reusable tests or when the scenario is outside that tool's coverage.
+11. After setup/environment validation succeeds, ask the user whether they want
+    the current agent/client configured with this repo's skill and MCP servers.
+    Only register after confirmation. Merge with existing agent config; do not
+    overwrite it.

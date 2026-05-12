@@ -132,6 +132,17 @@ If anything looks off, see [`configure-vkd-redux.md`](./configure-vkd-redux.md).
 Pick one of the templates in [`presets/mcp-client-config/`](../presets/mcp-client-config/) and merge
 it into your AI client's MCP configuration.
 
+If an AI assistant is walking you through setup, it should ask after the
+environment is green whether you want it to register this repo with the current
+agent/client. That registration means:
+
+- the `kernel-driver-testing` skill from `skills/kernel-driver-testing/`
+- the MCP servers from `presets/mcp-client-config/` (`driver-harness`, `windbg`,
+  and `vmware`)
+
+It should only do this after you confirm, and it should merge into your existing
+agent/client config rather than overwrite it.
+
 For Claude Code CLI:
 
 ```powershell
