@@ -73,6 +73,11 @@ Before reverting/starting the VM for automation, run:
 driver-harness-mcp.cleanup_windbg_instances(only_harness_mcp=true)
 ```
 
+The cleanup tool first asks reachable WinDbg MCP sessions to exit themselves
+with `exit_windbg`, which avoids common permissions failures when WinDbg is
+elevated. If that does not close every stale session, it falls back to
+host-side process termination.
+
 After `wait_mcp_ready`, run:
 
 ```text

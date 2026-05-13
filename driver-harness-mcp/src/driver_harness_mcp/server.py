@@ -16,6 +16,7 @@ from fastmcp import FastMCP
 from .tools.debugger import (
     cleanup_windbg_instances,
     ensure_debugger_ready,
+    exit_windbg,
     list_windbg_processes,
     query_debugger_status,
 )
@@ -37,6 +38,7 @@ def build_server() -> FastMCP:
     mcp.tool()(start_vkd_monitor)
     mcp.tool()(list_windbg_processes)
     mcp.tool()(cleanup_windbg_instances)
+    mcp.tool()(exit_windbg)
     mcp.tool()(query_debugger_status)
     mcp.tool()(ensure_debugger_ready)
     mcp.tool()(recover_to_clean_state)

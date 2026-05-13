@@ -64,6 +64,8 @@ already-running monitor picked it up.
   or extension load path is not ready. Do not continue to driver testing.
 - Multiple WinDbg instances: close stale harness-owned sessions before
   reverting. Multiple pipe servers can make the AI talk to an old snapshot.
+  Prefer `cleanup_windbg_instances`, which asks reachable WinDbg MCP sessions
+  to exit themselves before falling back to process termination.
 - `query_debugger_status` missing or fails: install the current
   `windbgmcpExt.dll`; older extension builds cannot report target state
   without changing it.

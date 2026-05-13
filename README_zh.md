@@ -65,8 +65,8 @@ API 与目录结构可能调整。Star / Watch 关注进展。
 3. **Skills 文档库**（给 AI 看的 markdown），描述标准流程和坑位
 4. **高阶 MCP 工具**：`diagnose_environment`、`start_vkd_monitor`、
    `cleanup_windbg_instances`、`query_debugger_status`、
-   `ensure_debugger_ready`、`recover_to_clean_state`、`wait_mcp_ready`、
-   `run_driver_load_verify`
+   `ensure_debugger_ready`、`exit_windbg`、`recover_to_clean_state`、
+   `wait_mcp_ready`、`run_driver_load_verify`
 5. **可直接复现的示例** —— 从 `examples/01-kernel-patch-bsod/` 开始
 
 ## 快速上手
@@ -145,7 +145,7 @@ driver-harness-mcp/
 | 组件 | 仓库 | 说明 |
 |---|---|---|
 | `vmware-mcp` | [`ZacharyZcR/vmware-mcp`](https://github.com/ZacharyZcR/vmware-mcp) | 直接用，submodule |
-| `windbg-ext-mcp` | [`Letenz/windbg-ext-mcp`](https://github.com/Letenz/windbg-ext-mcp)（fork）| 含 harness 补丁：SDDL pipe ACL、BreakInHandler、debugger_status。后续会给上游提 PR。 |
+| `windbg-ext-mcp` | [`Letenz/windbg-ext-mcp`](https://github.com/Letenz/windbg-ext-mcp)（fork）| 含 harness 补丁：SDDL pipe ACL、BreakInHandler、debugger_status、exit_windbg。后续会给上游提 PR。 |
 | `driver-harness-mcp` | 本仓库 | 新增的高阶 MCP 工具 |
 | `VirtualKD-Redux` | [`4d61726b/VirtualKD-Redux`](https://github.com/4d61726b/VirtualKD-Redux) | 用户自行安装（属于工具类） |
 

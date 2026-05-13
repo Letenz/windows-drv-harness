@@ -59,9 +59,12 @@ the old WinDbg process may stay open. Those stale processes can keep reconnect
 state or create additional `\\.\pipe\windbgmcp` pipe servers, so an AI client
 may talk to the wrong debugger. For automation, run
 `driver-harness-mcp.cleanup_windbg_instances(only_harness_mcp=true)` before
-the snapshot restore. The tool only targets WinDbg processes that look like
-harness/VirtualKD sessions, such as command lines containing `windbgmcpExt.dll`,
-`!mcpstart`, or `com:pipe`.
+the snapshot restore. The tool first asks reachable WinDbg MCP sessions to exit
+themselves with the `exit_windbg` handler, then falls back to host-side process
+termination for any remaining stale sessions. This avoids common permission
+failures when WinDbg is elevated and the current AI client is not. The tool only
+targets WinDbg processes that look like harness/VirtualKD sessions, such as
+command lines containing `windbgmcpExt.dll`, `!mcpstart`, or `com:pipe`.
 
 Do not infer the target state from the WinDbg prompt. A fresh WinDbg can stop
 at `kd>` or continue with `g` depending on timing and startup commands. Use:
@@ -89,4 +92,10 @@ the machine-readable debugger state handler:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\test-windbg-debugger-status.ps1
+```
+
+To verify the WinDbg self-exit handler without closing WinDbg:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\test-windbg-exit-handler.ps1
 ```

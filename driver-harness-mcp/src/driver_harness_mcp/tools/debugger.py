@@ -102,12 +102,17 @@ def cleanup_windbg_instances(
     force: bool = True,
     dry_run: bool = False,
     wait_seconds: int = 5,
+    try_mcp_exit: bool = True,
+    pipe_name: str = r"\\.\pipe\windbgmcp",
+    mcp_exit_delay_ms: int = 250,
 ) -> dict:
     """Terminate stale WinDbg instances before VirtualKD auto-starts a new one.
 
     By default this only targets processes whose command line looks like it was
     launched by this harness (for example it contains windbgmcpExt.dll or
-    !mcpstart). This avoids killing unrelated manual debugging sessions.
+    !mcpstart). This avoids killing unrelated manual debugging sessions. When
+    possible, ask the WinDbg MCP extension to exit its own host process first;
+    this works even when the external agent cannot kill elevated WinDbg.
     """
     processes = _windbg_processes()
     targets = [
@@ -120,11 +125,34 @@ def cleanup_windbg_instances(
         "dry_run": dry_run,
         "only_harness_mcp": only_harness_mcp,
         "targets": targets,
+        "mcp_exit": [],
         "terminated": [],
         "errors": [],
     }
     if dry_run:
         return result
+
+    if try_mcp_exit and targets:
+        for _ in range(len(targets)):
+            if not is_pipe_available(pipe_name, timeout_ms=100):
+                break
+            exit_result = exit_windbg(
+                pipe_name=pipe_name,
+                delay_ms=mcp_exit_delay_ms,
+                timeout_seconds=max(5, wait_seconds),
+                wait_for_exit=False,
+            )
+            result["mcp_exit"].append(exit_result)
+            if not exit_result.get("ok"):
+                break
+            time.sleep(max(mcp_exit_delay_ms, 0) / 1000.0 + 0.1)
+
+        time.sleep(min(max(wait_seconds, 0), 5))
+        targets = [
+            proc
+            for proc in _windbg_processes()
+            if (proc.get("is_harness_mcp_session") or not only_harness_mcp)
+        ]
 
     for proc in targets:
         pid = proc.get("ProcessId")
@@ -160,6 +188,84 @@ def cleanup_windbg_instances(
         if (proc.get("is_harness_mcp_session") or not only_harness_mcp)
     ]
     return result
+
+
+def exit_windbg(
+    pipe_name: str = r"\\.\pipe\windbgmcp",
+    *,
+    delay_ms: int = 250,
+    exit_code: int = 0,
+    dry_run: bool = False,
+    timeout_seconds: int = 10,
+    wait_for_exit: bool = True,
+    wait_seconds: int = 5,
+) -> dict:
+    """Ask the WinDbg process hosting windbgmcpExt.dll to exit itself.
+
+    This uses the extension's ``exit_windbg`` handler instead of killing a host
+    process from the outside, which avoids common elevation/session permission
+    failures.
+    """
+    if not is_pipe_available(pipe_name, timeout_ms=250):
+        return {
+            "ok": False,
+            "message": f"{pipe_name} is not available.",
+            "pipe_name": pipe_name,
+            "windbg_processes": list_windbg_processes()["processes"],
+        }
+
+    bounded_delay = max(0, min(int(delay_ms), 10000))
+    client = PipeClient(pipe_name)
+    response: dict[str, Any] | None = None
+    try:
+        client.connect(timeout_seconds=timeout_seconds)
+        response = client.send(
+            "exit_windbg",
+            {
+                "delay_ms": bounded_delay,
+                "exit_code": int(exit_code),
+                "dry_run": bool(dry_run),
+            },
+            timeout_seconds=timeout_seconds,
+        )
+    except PipeError as exc:
+        return {
+            "ok": False,
+            "message": str(exc),
+            "stage": exc.stage,
+            "pipe_name": pipe_name,
+            "windbg_processes": list_windbg_processes()["processes"],
+        }
+    finally:
+        client.close()
+
+    if not response or response.get("status") != "success":
+        return {
+            "ok": False,
+            "message": "exit_windbg handler failed; install the current windbgmcpExt.dll.",
+            "response": response,
+            "pipe_name": pipe_name,
+            "windbg_processes": list_windbg_processes()["processes"],
+        }
+
+    gone = False
+    if wait_for_exit and not dry_run:
+        deadline = time.monotonic() + wait_seconds
+        while time.monotonic() < deadline:
+            if not is_pipe_available(pipe_name, timeout_ms=100):
+                gone = True
+                break
+            time.sleep(0.25)
+
+    return {
+        "ok": True,
+        "message": "WinDbg exit requested via MCP.",
+        "pipe_name": pipe_name,
+        "response": response,
+        "dry_run": dry_run,
+        "pipe_gone": gone,
+        "windbg_processes": list_windbg_processes()["processes"],
+    }
 
 
 def query_debugger_status(

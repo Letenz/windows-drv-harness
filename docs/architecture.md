@@ -111,6 +111,7 @@ We maintain three patches on top of `NadavLor/windbg-ext-mcp`:
 1. **SDDL pipe ACL** — lets a non-elevated MCP client (e.g. VS Code, Cursor running as the user) connect to the named pipe created by an elevated WinDbg process. Without this patch, the AI must run as Administrator.
 2. **`BreakInHandler`** — programmatically interrupts a running kernel target (equivalent to clicking WinDbg's Break button), so AI can do `break_in → .crash → !analyze` without GUI interaction.
 3. **`debugger_status`** — reports `DEBUG_STATUS_*` without changing target state, so AI can decide whether to send `g`, `break_in`, or an inspection command.
+4. **`exit_windbg`** — asks the elevated WinDbg process to exit itself, so cleanup can work even when the external AI client cannot terminate that process directly.
 
 They are intended to be submitted upstream. See [`docs/configure-vkd-redux.md`](./configure-vkd-redux.md)
 and the [windbg-ext-mcp fork README](https://github.com/Letenz/windbg-ext-mcp#patches) for details.
