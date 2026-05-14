@@ -43,18 +43,30 @@ patch code -> repeat
 - `vmmon64.exe` reads `HKLM\Software\VirtualKD-Redux\Monitor` when it starts.
   If `DebuggerType` or `CustomDebuggerTemplate` changes, stop vmmon first,
   edit the registry, then start vmmon again.
+- Treat `vmmon64.exe` as stale unless it was started after the registry was
+  verified in the current session. Restart vmmon during preflight before any
+  snapshot restore/start.
 - Use `DebuggerType=2` (Custom). Do not use `DebuggerType=3`; WinDbg Preview
   mode can ignore `CustomDebuggerTemplate` and start WinDbg without
   `mcpext.dll`.
 - Do not infer debugger state from screenshots, prompts, or window focus. Use
   `windbg-mcp.wm_session`, `windbg-mcp.wm_break_in`, and
   `windbg-mcp.wm_wait_event`.
+- If WinDbg starts but `\\.\pipe\windbgmcp` never appears, the environment is
+  not ready. Do not send keystrokes, use window titles, press Ctrl+Break, or
+  launch a replacement WinDbg by hand. Fix registry/vmmon and retry the
+  snapshot sequence once.
 - `mcpext.dll` accepts one pipe client at a time. Avoid overlapping direct
   `windbg-mcp` calls.
 - Do not search whole drives, user profiles, download folders, or arbitrary
   tool directories. Probe only explicit user input, config, environment
   variables, registry values, and fixed default install paths. If bounded
   probing fails, ask the user for the path.
+- Never run recursive `Get-ChildItem` from a drive root to discover `.vmx`,
+  `vmrun.exe`, `vmmon64.exe`, or WinDbg.
+- Do not write plaintext passwords to `windows-drv-harness.config.json`. If
+  the user gives a password in chat, keep it in memory for the current run or
+  ask for an environment variable name.
 - Ask the user before registering this skill or MCP servers into the current
   agent/client. Merge with existing config; never overwrite it wholesale.
 - Ask the user to run the current agent/session as Administrator for automated
@@ -185,6 +197,8 @@ Use this order. Do not recurse or scan drives.
 
 - `vmrun.exe`: explicit input, `host.vmrun_path`, `VMRUN_PATH`, VMware
   Workstation registry `InstallPath`, then default install paths.
+- `.vmx`: explicit input or `vm.vmx_path` from config. `vmrun list` may reveal
+  a running VM, but ask the user to confirm it. Do not enumerate `*.vmx`.
 - `vmmon64.exe`: explicit input, `host.vmmon64_path`,
   `WINDOWS_DRV_HARNESS_VMMON64`, `VMMON64_PATH`, VirtualKD registry
   `InstallPath`, then `C:\Program Files\VirtualKD-Redux\vmmon64.exe` and
@@ -194,15 +208,53 @@ Use this order. Do not recurse or scan drives.
 
 ## Session Start Sequence
 
-At the start of every test session:
+At the start of every test session, run this as a hard gate. Do not restore,
+start, stop, or otherwise touch the VM until every item passes.
 
 1. Read `<SKILL_DIR>\windows-drv-harness.config.json`. If it is missing,
-   create it from the example and ask only for missing values.
-2. Check that the snapshot flag and debug transport flags match reality. The
+   create it from the example and ask only for missing values. Ask for VMX and
+   snapshot names; never discover them by drive scanning.
+2. If `guest.admin_password` is missing, ask for a password or env var. If the
+   user provides a password directly, keep it in a transient variable and do
+   not write it into config.
+3. Check that the snapshot flag and debug transport flags match reality. The
    snapshot must already be VirtualKD/KDNET ready.
-3. Verify `DebuggerType=2` and that `CustomDebuggerTemplate` contains
-   `mcpext.dll`, `!mcpext.start`, and `-c`.
-4. Ensure `vmmon64.exe` is running before restore/start.
+4. Verify VirtualKD registry and restart vmmon in the same preflight:
+
+```powershell
+$skill = "<absolute SKILL_DIR>"
+$dll = (Resolve-Path (Join-Path $skill "windbg-mcp\mcpext.dll")).Path
+$windbg = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
+$template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpext.start; g`""
+
+$reg = "HKLM:\Software\VirtualKD-Redux\Monitor"
+$v = Get-ItemProperty -Path $reg -ErrorAction SilentlyContinue
+$needsFix = $null -eq $v -or
+  $v.DebuggerType -ne 2 -or
+  [string]::IsNullOrWhiteSpace($v.CustomDebuggerTemplate) -or
+  -not $v.CustomDebuggerTemplate.Contains($dll) -or
+  -not $v.CustomDebuggerTemplate.Contains("!mcpext.start") -or
+  -not $v.CustomDebuggerTemplate.Contains("-c")
+
+Get-Process vmmon64 -ErrorAction SilentlyContinue | Stop-Process -Force
+
+if ($needsFix) {
+  New-Item -Path $reg -Force | Out-Null
+  Set-ItemProperty -Path $reg -Name DebuggerType -Type DWord -Value 2
+  Set-ItemProperty -Path $reg -Name AutoInvokeDebugger -Type DWord -Value 1
+  Set-ItemProperty -Path $reg -Name InitialBreakIn -Type DWord -Value 1
+  Set-ItemProperty -Path $reg -Name WaitForOS -Type DWord -Value 1
+  Set-ItemProperty -Path $reg -Name CustomDebuggerTemplate -Type String -Value $template
+}
+
+$vmmon = "<path from config, env, registry, default path, or explicit user input>"
+Start-Process -FilePath $vmmon -WindowStyle Hidden
+Start-Sleep -Seconds 1
+if (-not (Get-Process vmmon64 -ErrorAction SilentlyContinue)) {
+  throw "vmmon64.exe is not running; stop and ask the user for the correct path/admin session."
+}
+```
+
 5. Close stale harness-owned WinDbg windows before snapshot restore. First use
    `windbg-mcp.wm_exit` if a live pipe is reachable; then kill only WinDbg
    processes whose command line clearly matches the automation:
@@ -216,16 +268,32 @@ Get-CimInstance Win32_Process |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 ```
 
-6. Restore/start the VM using `vmware-mcp`:
+If WinDbg exists but command line is blank and no `\\.\pipe\windbgmcp` is live,
+stop and ask whether to close that WinDbg. Do not continue into a restore with
+ambiguous stale debugger windows.
+
+6. Restore/start the VM using `vmware-mcp`, or `vmrun.exe` as separate checked
+   commands. Do not chain stop/revert/start in one long shell command.
 
 ```text
 vmware.vmrun_snapshot_revert(vm_id=<vmx_path>, name=<baseline_snapshot>)
 vmware.vmrun_start(vm_id=<vmx_path>, gui=false)
 ```
 
-7. Poll `windbg-mcp.wm_session` until it reports an attached kernel target.
-   If the pipe is disconnected, wait briefly and retry; if it never connects,
-   report that WinDbg did not load `mcpext.dll`.
+For raw `vmrun.exe`, prefer:
+
+```powershell
+& $vmrun revertToSnapshot $vmx $snapshot
+if ($LASTEXITCODE -ne 0) { throw "snapshot revert failed" }
+& $vmrun start $vmx nogui
+if ($LASTEXITCODE -ne 0) { throw "vm start failed" }
+```
+
+7. Wait up to 120 seconds for `\\.\pipe\windbgmcp`, then call
+   `windbg-mcp.wm_session` until it reports an attached kernel target. If
+   WinDbg exists but the pipe never appears, stop: VirtualKD launched WinDbg
+   without `mcpext.dll` or `!mcpext.start` failed. Close the stale WinDbg,
+   rerun the registry/vmmon preflight, and retry restore/start once.
 8. Use `windbg-mcp.wm_run_cmd(cmd="g")` to let the guest run when guest-side
    work is needed. Use `windbg-mcp.wm_break_in()` before inspection commands.
 

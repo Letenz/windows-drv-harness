@@ -78,9 +78,11 @@ Use skills/windows-drv-harness/SKILL.md as the operating manual. Resolve
 tool paths relative to that skill directory. Do not look for an extra harness
 MCP server. Use windbg-mcp for debugger state and commands, vmware-mcp or
 vmrun for VMware operations, and bounded PowerShell for vmmon/VirtualKD
-registry work. Do not restore or start the VM until vmmon64.exe is running.
-Do not scan whole drives; ask me for missing paths after bounded probing fails.
-Ask before registering MCP servers in my current client.
+registry work. Run the skill's preflight gate before any vmrun operation:
+verify VirtualKD registry, restart vmmon64.exe, close stale WinDbg, then wait
+for the windbgmcp pipe after restore/start. Do not scan whole drives; ask me
+for missing paths after bounded probing fails. Do not store plaintext
+passwords in config. Ask before registering MCP servers in my current client.
 ```
 
 For a driver test:
