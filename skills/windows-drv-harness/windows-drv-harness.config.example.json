@@ -1,9 +1,9 @@
 {
-  "$schema": "./windows-kernel-driver-lab.config.schema.json",
+  "$schema": "./windows-drv-harness.config.schema.json",
 
   "_comment": [
-    "Copy this file to windows-kernel-driver-lab.config.json and fill in real values.",
-    "windows-kernel-driver-lab.config.json is gitignored; do not commit VM paths or secrets.",
+    "Copy this file to windows-drv-harness.config.json and fill in real values.",
+    "windows-drv-harness.config.json is gitignored; do not commit VM paths or secrets.",
     "Agents may probe explicit input, this config, env vars, registry values,",
     "and fixed default paths only. If a tool is still missing, ask the user."
   ],

@@ -1,4 +1,4 @@
-# windows-kernel-driver-lab
+# windows-drv-harness
 
 Self-contained AI skill bundle for Windows kernel driver testing with VMware
 Workstation, VirtualKD-Redux, WinDbg, `windbg-mcp`, and `vmware-mcp`.
@@ -6,13 +6,13 @@ Workstation, VirtualKD-Redux, WinDbg, `windbg-mcp`, and `vmware-mcp`.
 The useful payload lives under one skill directory:
 
 ```text
-skills/windows-kernel-driver-lab/
+skills/windows-drv-harness/
   SKILL.md
   windbg-mcp/mcpext.dll
   windbg-mcp/windbg-mcp.exe
   vmware-mcp/
-  windows-kernel-driver-lab.config.example.json
-  windows-kernel-driver-lab.config.schema.json
+  windows-drv-harness.config.example.json
+  windows-drv-harness.config.schema.json
 ```
 
 There is no extra high-level harness MCP server. The AI reads the skill and
@@ -50,11 +50,11 @@ use `windbg-mcp` to read debugger state instead of guessing from screenshots.
 git clone --recursive https://github.com/Letenz/driver-harness-mcp.git
 cd driver-harness-mcp
 
-$skill = ".\skills\windows-kernel-driver-lab"
-Copy-Item "$skill\windows-kernel-driver-lab.config.example.json" "$skill\windows-kernel-driver-lab.config.json"
+$skill = ".\skills\windows-drv-harness"
+Copy-Item "$skill\windows-drv-harness.config.example.json" "$skill\windows-drv-harness.config.json"
 ```
 
-`windows-kernel-driver-lab.config.json` is gitignored. Put VM paths, snapshot
+`windows-drv-harness.config.json` is gitignored. Put VM paths, snapshot
 name, guest credentials, and tool paths there. Prefer `${env:VAR_NAME}` for
 passwords.
 
@@ -67,14 +67,14 @@ py -3.11 -m venv "$skill\vmware-mcp\.venv"
 ```
 
 `windbg-mcp.exe` is native and runs directly from
-`skills\windows-kernel-driver-lab\windbg-mcp\windbg-mcp.exe`.
+`skills\windows-drv-harness\windbg-mcp\windbg-mcp.exe`.
 
 ## Prompt Examples
 
 Use this prompt when handing the repo to an AI agent:
 
 ```text
-Use skills/windows-kernel-driver-lab/SKILL.md as the operating manual. Resolve
+Use skills/windows-drv-harness/SKILL.md as the operating manual. Resolve
 tool paths relative to that skill directory. Do not look for an extra harness
 MCP server. Use windbg-mcp for debugger state and commands, vmware-mcp or
 vmrun for VMware operations, and bounded PowerShell for vmmon/VirtualKD
@@ -100,7 +100,7 @@ revert the snapshot, and patch the smallest code area if the test fails.
 - Old WinDbg windows should be closed before each restore if their command line
   shows `mcpext.dll`, `windbgmcpExt.dll`, `!mcpext.start`, `!mcpstart`, or the
   `windbgmcp` pipe.
-- Do not commit `windows-kernel-driver-lab.config.json`.
+- Do not commit `windows-drv-harness.config.json`.
 
 ## License
 

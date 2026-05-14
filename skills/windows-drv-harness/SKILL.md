@@ -1,9 +1,9 @@
 ---
-name: windows-kernel-driver-lab
+name: windows-drv-harness
 description: Operate a Windows kernel driver testing lab with VMware Workstation, VirtualKD-Redux, WinDbg, self-developed windbg-mcp, and vmware-mcp. Use when an agent must set up or diagnose the environment, configure VirtualKD autostart, start vmmon64.exe, register MCP servers, deploy a .sys into a VM, load/unload a kernel driver, inspect WinDbg state, analyze a crash, recover a VMware snapshot, or run a build-test-fix loop.
 ---
 
-# Windows Kernel Driver Lab
+# Windows Driver Harness
 
 This skill is the operating manual. There is no extra high-level harness MCP
 server. Use `windbg-mcp` for debugger work, `vmware-mcp` or `vmrun.exe` for
@@ -68,8 +68,8 @@ windbg-mcp/mcpext.dll
 windbg-mcp/windbg-mcp.exe
 windbg-mcp/*.sha256
 vmware-mcp/
-windows-kernel-driver-lab.config.example.json
-windows-kernel-driver-lab.config.schema.json
+windows-drv-harness.config.example.json
+windows-drv-harness.config.schema.json
 ```
 
 ## One-Time Setup
@@ -80,7 +80,7 @@ Work from `<SKILL_DIR>` unless an absolute path is shown.
    is empty:
 
 ```powershell
-git submodule update --init --recursive -- .\skills\windows-kernel-driver-lab\vmware-mcp
+git submodule update --init --recursive -- .\skills\windows-drv-harness\vmware-mcp
 ```
 
 2. Install `vmware-mcp`:
@@ -96,11 +96,11 @@ py -3.11 -m venv .\vmware-mcp\.venv
 3. Copy WinDbg MCP binaries to a stable host path:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\ProgramData\windows-kernel-driver-lab\windbg-mcp | Out-Null
-Copy-Item .\windbg-mcp\mcpext.dll C:\ProgramData\windows-kernel-driver-lab\windbg-mcp\mcpext.dll -Force
-Copy-Item .\windbg-mcp\windbg-mcp.exe C:\ProgramData\windows-kernel-driver-lab\windbg-mcp\windbg-mcp.exe -Force
-Get-FileHash C:\ProgramData\windows-kernel-driver-lab\windbg-mcp\mcpext.dll -Algorithm SHA256
-Get-FileHash C:\ProgramData\windows-kernel-driver-lab\windbg-mcp\windbg-mcp.exe -Algorithm SHA256
+New-Item -ItemType Directory -Force C:\ProgramData\windows-drv-harness\windbg-mcp | Out-Null
+Copy-Item .\windbg-mcp\mcpext.dll C:\ProgramData\windows-drv-harness\windbg-mcp\mcpext.dll -Force
+Copy-Item .\windbg-mcp\windbg-mcp.exe C:\ProgramData\windows-drv-harness\windbg-mcp\windbg-mcp.exe -Force
+Get-FileHash C:\ProgramData\windows-drv-harness\windbg-mcp\mcpext.dll -Algorithm SHA256
+Get-FileHash C:\ProgramData\windows-drv-harness\windbg-mcp\windbg-mcp.exe -Algorithm SHA256
 Get-Content .\windbg-mcp\mcpext.dll.sha256
 Get-Content .\windbg-mcp\windbg-mcp.exe.sha256
 ```
@@ -108,7 +108,7 @@ Get-Content .\windbg-mcp\windbg-mcp.exe.sha256
 4. Create local config:
 
 ```powershell
-Copy-Item .\windows-kernel-driver-lab.config.example.json .\windows-kernel-driver-lab.config.json
+Copy-Item .\windows-drv-harness.config.example.json .\windows-drv-harness.config.json
 ```
 
 Fill in:
@@ -128,7 +128,7 @@ Fill in:
 Get-Process vmmon64 -ErrorAction SilentlyContinue | Stop-Process -Force
 
 $windbg = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
-$dll = "C:\ProgramData\windows-kernel-driver-lab\windbg-mcp\mcpext.dll"
+$dll = "C:\ProgramData\windows-drv-harness\windbg-mcp\mcpext.dll"
 $template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpext.start; g`""
 
 New-Item -Path HKLM:\Software\VirtualKD-Redux\Monitor -Force | Out-Null
@@ -188,7 +188,7 @@ Use this order. Do not recurse or scan drives.
 - `vmrun.exe`: explicit input, `host.vmrun_path`, `VMRUN_PATH`, VMware
   Workstation registry `InstallPath`, then default install paths.
 - `vmmon64.exe`: explicit input, `host.vmmon64_path`,
-  `WINDOWS_KERNEL_DRIVER_LAB_VMMON64`, `VMMON64_PATH`, VirtualKD registry
+  `WINDOWS_DRV_HARNESS_VMMON64`, `VMMON64_PATH`, VirtualKD registry
   `InstallPath`, then `C:\Program Files\VirtualKD-Redux\vmmon64.exe` and
   `C:\Program Files (x86)\VirtualKD-Redux\vmmon64.exe`.
 - WinDbg: explicit input, Windows Kits debugger default paths. If not found,
@@ -198,7 +198,7 @@ Use this order. Do not recurse or scan drives.
 
 At the start of every test session:
 
-1. Read `<SKILL_DIR>\windows-kernel-driver-lab.config.json`. If it is missing,
+1. Read `<SKILL_DIR>\windows-drv-harness.config.json`. If it is missing,
    create it from the example and ask only for missing values.
 2. Check that the snapshot flag and debug transport flags match reality. The
    snapshot must already be VirtualKD/KDNET ready.

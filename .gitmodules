@@ -1,3 +1,3 @@
-[submodule "skills/windows-kernel-driver-lab/vmware-mcp"]
-	path = skills/windows-kernel-driver-lab/vmware-mcp
+[submodule "skills/windows-drv-harness/vmware-mcp"]
+	path = skills/windows-drv-harness/vmware-mcp
 	url = https://github.com/ZacharyZcR/vmware-mcp.git
