@@ -154,8 +154,20 @@ def _programdata() -> Path:
 def probe_extension_path() -> str:
     candidates = [
         os.environ.get("DRIVER_HARNESS_EXT_DLL", ""),
-        str(_programdata() / r"driver-harness-mcp\bin\windbgmcpExt.dll"),
-        str(repo_root() / r"bin\windbgmcpExt.dll"),
+        str(_programdata() / r"driver-harness-mcp\bin\mcpext.dll"),
+        str(repo_root() / r"bin\mcpext.dll"),
+    ]
+    for path in candidates:
+        if path and Path(path).is_file():
+            return path
+    return ""
+
+
+def probe_windbg_mcp_host_path() -> str:
+    candidates = [
+        os.environ.get("WINDBG_MCP_EXE", ""),
+        str(_programdata() / r"driver-harness-mcp\bin\windbg-mcp.exe"),
+        str(repo_root() / r"bin\windbg-mcp.exe"),
     ]
     for path in candidates:
         if path and Path(path).is_file():
@@ -176,13 +188,13 @@ def _validate_vkd_registry_for_mcp() -> tuple[bool, str, str]:
             f"DebuggerType={debugger_type or '<missing>'}",
             "Set VKD DebuggerType=2 (Custom). DebuggerType=3 can ignore CustomDebuggerTemplate.",
         )
-    required = ["windbgmcpExt.dll", "!mcpstart", "-c"]
+    required = ["mcpext.dll", "!mcpext.start", "-c"]
     missing = [item for item in required if item.lower() not in template.lower()]
     if missing:
         return (
             False,
             f"CustomDebuggerTemplate missing: {', '.join(missing)}",
-            "Template must load windbgmcpExt.dll and run !mcpstart.",
+            "Template must load mcpext.dll and run !mcpext.start.",
         )
     return True, template, ""
 
@@ -214,6 +226,7 @@ def diagnose_environment(
     vmrun = probe_vmrun_path(config, vmrun_path)
     vmmon = probe_vmmon64_path(config, vmmon64_path)
     ext_dll = probe_extension_path()
+    windbg_mcp = probe_windbg_mcp_host_path()
     baseline_flag = config_bool(config, "flags.baseline_snapshot_created")
     vkd_flag = config_bool(config, "flags.guest_vkd_installed")
     kdnet_flag = config_bool(config, "flags.guest_kdnet_configured")
@@ -268,11 +281,14 @@ def diagnose_environment(
             "Run the current agent/session as Administrator for HKLM registry writes "
             "and reliable vmmon restart.",
         ),
-        _check("windbgmcpExt.dll", bool(ext_dll), ext_dll,
-               "Copy bin\\windbgmcpExt.dll to C:\\ProgramData\\driver-harness-mcp\\bin "
+        _check("mcpext.dll", bool(ext_dll), ext_dll,
+               "Copy bin\\mcpext.dll to C:\\ProgramData\\driver-harness-mcp\\bin "
                "or set DRIVER_HARNESS_EXT_DLL."),
+        _check("windbg-mcp.exe", bool(windbg_mcp), windbg_mcp,
+               "Copy bin\\windbg-mcp.exe to C:\\ProgramData\\driver-harness-mcp\\bin "
+               "or set WINDBG_MCP_EXE."),
         _check("windbgmcp pipe", is_pipe_available(pipe_name), pipe_name,
-               "The pipe appears only after VM + WinDbg + !mcpstart are ready."),
+               "The pipe appears only after VM + WinDbg + !mcpext.start are ready."),
     ]
 
     debugger_type = _probe_registry_value(
@@ -293,9 +309,14 @@ def diagnose_environment(
     checks.append(
         _check(
             "VKD CustomDebuggerTemplate",
-            bool(template and "windbgmcpExt.dll" in template and "!mcpstart" in template and "-c" in template),
+            bool(
+                template
+                and "mcpext.dll" in template.lower()
+                and "!mcpext.start" in template.lower()
+                and "-c" in template.lower()
+            ),
             template[:180],
-            "Template should launch WinDbg with -c, load windbgmcpExt.dll, and run !mcpstart.",
+            "Template should launch WinDbg with -c, load mcpext.dll, and run !mcpext.start.",
         )
     )
 
@@ -316,7 +337,8 @@ def diagnose_environment(
             "guest.admin_password",
             "vmrun.exe",
             "vmmon64.exe path",
-            "windbgmcpExt.dll",
+            "mcpext.dll",
+            "windbg-mcp.exe",
             "VKD DebuggerType=2",
             "VKD CustomDebuggerTemplate",
         }
@@ -332,6 +354,7 @@ def diagnose_environment(
             "vmrun_path": vmrun,
             "vmmon64_path": vmmon,
             "extension_path": ext_dll,
+            "windbg_mcp_path": windbg_mcp,
             "pipe_name": pipe_name,
         },
     }

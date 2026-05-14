@@ -62,8 +62,7 @@ def run_driver_load_verify(
     artifacts: dict[str, Any] = {}
     observations: list[str] = []
     timings: dict[str, float] = {}
-    ctrl: PipeClient | None = None
-    run: PipeClient | None = None
+    pipe: PipeClient | None = None
 
     def fail(stage: str, message: str, *, detail: str = "") -> dict[str, Any]:
         return {
@@ -118,17 +117,15 @@ def run_driver_load_verify(
                 detail=json.dumps(ready),
             )
 
-        ctrl = PipeClient(pipe_name)
-        run = PipeClient(pipe_name)
-        ctrl.connect(timeout_seconds=10)
-        run.connect(timeout_seconds=10)
+        pipe = PipeClient(pipe_name)
+        pipe.connect(timeout_seconds=10)
 
-        vt = _exec(ctrl, "vertarget", timeout_ms=30000)
+        vt = _exec(pipe, "vertarget", timeout_ms=30000)
         artifacts["vertarget"] = vt
         if vt.get("status") != "success":
             raise HarnessError("vertarget", "vertarget failed", detail=json.dumps(vt))
 
-        mask = _exec(ctrl, "ed nt!Kd_DEFAULT_Mask 0xFFFFFFFF", timeout_ms=30000)
+        mask = _exec(pipe, "ed nt!Kd_DEFAULT_Mask 0xFFFFFFFF", timeout_ms=30000)
         artifacts["dbgprint_mask"] = mask
         if mask.get("status") != "success":
             observations.append("Could not set nt!Kd_DEFAULT_Mask; DbgPrint verification may fail.")
@@ -140,7 +137,7 @@ def run_driver_load_verify(
             return {"guest_sys_path": guest_sys}
 
         artifacts["push_driver"] = _with_guest_running(
-            run, ctrl, push_driver, command_timeout_ms=command_timeout_ms
+            pipe, push_driver, command_timeout_ms=command_timeout_ms
         )
 
         host_query_file = str(Path(tempfile.gettempdir()) / f"{service_name}_sc_query.txt")
@@ -197,14 +194,14 @@ def run_driver_load_verify(
             return {"sc_create": create, "sc_start": start_result, "sc_query": sc_query}
 
         artifacts["load_driver"] = _with_guest_running(
-            run, ctrl, load_driver, command_timeout_ms=command_timeout_ms
+            pipe, load_driver, command_timeout_ms=command_timeout_ms
         )
         if "RUNNING" not in artifacts["load_driver"].get("sc_query", ""):
             raise HarnessError("sc_query", "driver service is not RUNNING",
                                detail=artifacts["load_driver"].get("sc_query", ""))
 
-        lm = _exec(ctrl, f"lm m {service_name}", timeout_ms=30000)
-        dp = _exec(ctrl, ".dbgprint", timeout_ms=60000)
+        lm = _exec(pipe, f"lm m {service_name}", timeout_ms=30000)
+        dp = _exec(pipe, ".dbgprint", timeout_ms=60000)
         artifacts["lm_after_load"] = lm
         artifacts["dbgprint_after_load"] = _tail_response(dp)
         lm_text = _response_text(lm)
@@ -238,11 +235,11 @@ def run_driver_load_verify(
             return {"sc_stop": stop, "sc_delete": delete}
 
         artifacts["unload_driver"] = _with_guest_running(
-            run, ctrl, unload_driver, command_timeout_ms=command_timeout_ms
+            pipe, unload_driver, command_timeout_ms=command_timeout_ms
         )
 
-        dp2 = _exec(ctrl, ".dbgprint", timeout_ms=60000)
-        lm2 = _exec(ctrl, f"lm m {service_name}", timeout_ms=30000)
+        dp2 = _exec(pipe, ".dbgprint", timeout_ms=60000)
+        lm2 = _exec(pipe, f"lm m {service_name}", timeout_ms=30000)
         artifacts["dbgprint_after_unload"] = _tail_response(dp2)
         artifacts["lm_after_unload"] = lm2
         dp2_text = _response_text(dp2)
@@ -272,10 +269,8 @@ def run_driver_load_verify(
     except Exception as exc:
         return fail("unexpected", str(exc))
     finally:
-        if ctrl:
-            ctrl.close()
-        if run:
-            run.close()
+        if pipe:
+            pipe.close()
         if always_revert and vmrun and vmx and snapshot:
             try:
                 t0 = time.monotonic()
@@ -363,26 +358,36 @@ def _wait_tools_running(vmrun: str, vmx: str, timeout_seconds: int) -> None:
 
 def _exec(pipe: PipeClient, command: str, *, timeout_ms: int) -> dict[str, Any]:
     response = pipe.send(
-        "execute_command",
-        {"command": command, "timeout_ms": timeout_ms},
+        "run_cmd",
+        {"cmd": command, "timeout_ms": timeout_ms},
         timeout_seconds=max(5, timeout_ms // 1000 + 5),
     )
     assert response is not None
-    return response
+    if response.get("_protocol_ok") is False:
+        return {
+            "status": "error",
+            "error": response.get("message", "WinDbg command failed"),
+            "detail": response,
+        }
+    clone = dict(response)
+    clone["status"] = "success"
+    return clone
 
 
 def _with_guest_running(
-    run_pipe: PipeClient,
-    ctrl_pipe: PipeClient,
+    pipe: PipeClient,
     callback: Callable[[], dict[str, Any]],
     *,
     command_timeout_ms: int,
 ) -> dict[str, Any]:
-    run_pipe.send(
-        "execute_command",
-        {"command": "g", "timeout_ms": command_timeout_ms},
+    go_request = pipe.send(
+        "run_cmd",
+        {"cmd": "g", "timeout_ms": command_timeout_ms},
         read=False,
     )
+    go_request_id = None
+    if isinstance(go_request, dict) and go_request.get("request_id"):
+        go_request_id = int(go_request["request_id"])
     time.sleep(0.5)
     callback_result: dict[str, Any] | None = None
     callback_error: Exception | None = None
@@ -391,11 +396,20 @@ def _with_guest_running(
     except Exception as exc:
         callback_error = exc
     finally:
-        break_response = ctrl_pipe.send("break_in", {"timeout_ms": 10000}, timeout_seconds=15)
-        try:
-            run_response = run_pipe.read_response(timeout_seconds=20)
-        except Exception as exc:
-            run_response = {"status": "warning", "error": str(exc)}
+        break_response = pipe.send("break_in", {"timeout_ms": 10000}, timeout_seconds=15)
+        if go_request_id is None:
+            run_response = {
+                "status": "warning",
+                "error": "missing request id for asynchronous g command",
+            }
+        else:
+            try:
+                run_response = pipe.read_response(
+                    timeout_seconds=20,
+                    request_id=go_request_id,
+                )
+            except Exception as exc:
+                run_response = {"status": "warning", "error": str(exc)}
 
     if callback_error:
         if isinstance(callback_error, HarnessError):

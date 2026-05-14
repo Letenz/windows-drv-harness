@@ -1,14 +1,14 @@
 ---
 name: kernel-driver-testing
-description: Operate a Windows kernel driver test harness with VMware Workstation, VirtualKD-Redux, WinDbg, windbg-ext-mcp, vmware-mcp, and driver-harness-mcp. Use when an agent must set up or diagnose the harness, configure VirtualKD autostart, start vmmon64.exe, register or use the MCP servers, deploy a .sys into a VM, load/unload a kernel driver, run a build-test-fix loop, inspect WinDbg state, analyze a crash, or recover a VMware snapshot.
+description: Operate a Windows kernel driver test harness with VMware Workstation, VirtualKD-Redux, WinDbg, self-developed windbg-mcp, vmware-mcp, and driver-harness-mcp. Use when an agent must set up or diagnose the harness, configure VirtualKD autostart, start vmmon64.exe, register or use the MCP servers, deploy a .sys into a VM, load/unload a kernel driver, run a build-test-fix loop, inspect WinDbg state, analyze a crash, or recover a VMware snapshot.
 ---
 
 # Kernel Driver Testing
 
 This skill is the canonical operating manual. Do not look for extra project
-docs or installer scripts. Prefer the high-level `driver-harness-mcp` tools;
-use `windbg-ext-mcp` and `vmware-mcp` directly only when the harness tool does
-not cover the requested operation.
+docs or installer scripts. Prefer `driver-harness-mcp` high-level tools for
+the driver test loop; use `windbg-mcp` and `vmware-mcp` directly only when the
+harness tool does not cover the requested operation.
 
 ## Mental Model
 
@@ -18,12 +18,13 @@ agent
        diagnose_environment, start_vkd_monitor, cleanup_windbg_instances,
        exit_windbg, query_debugger_status, ensure_debugger_ready,
        recover_to_clean_state, wait_mcp_ready, run_driver_load_verify
-  -> windbg-ext-mcp
-       break_in, exit_windbg, run_command, run_sequence
+  -> windbg-mcp.exe
+       wm_session, wm_run_cmd, wm_wait_event, wm_break_in,
+       wm_analyze_crash, wm_exit
   -> vmware-mcp
        snapshot, start, copy files, run guest programs
   -> host tools
-       vmrun.exe, vmmon64.exe, WinDbg, windbgmcpExt.dll
+       vmrun.exe, vmmon64.exe, WinDbg, mcpext.dll
 ```
 
 The expected loop is:
@@ -44,9 +45,12 @@ collect WinDbg/guest evidence -> unload -> revert -> patch code -> repeat
   edit the registry, then start vmmon again.
 - Use `DebuggerType=2` (Custom). Do not use `DebuggerType=3` for automation;
   WinDbg Preview mode can ignore `CustomDebuggerTemplate` and start WinDbg
-  without `windbgmcpExt.dll`.
+  without `mcpext.dll`.
 - Do not infer debugger state from screenshots, prompts, or window focus. Use
-  `query_debugger_status` and `ensure_debugger_ready`.
+  `query_debugger_status`, `ensure_debugger_ready`, or `wm_session`.
+- `mcpext.dll` accepts one pipe client at a time. Do not call direct
+  `windbg-mcp` tools while a `driver-harness-mcp` high-level operation is
+  running; let the high-level call finish and close its pipe first.
 - Do not search whole drives, user profiles, download folders, or arbitrary
   tool directories. Probe only explicit user input, `driver-harness.config.json`,
   environment variables, registry values, and fixed default install paths. If
@@ -65,8 +69,8 @@ Only these repository areas matter:
 skills/kernel-driver-testing/SKILL.md     this file
 driver-harness-mcp/                       high-level MCP server
 third_party/vmware-mcp/                   VMware MCP submodule
-third_party/windbg-ext-mcp/               WinDbg MCP submodule and extension source
-bin/windbgmcpExt.dll                      prebuilt WinDbg MCP extension
+bin/mcpext.dll                            self-developed WinDbg extension
+bin/windbg-mcp.exe                        self-developed WinDbg MCP server
 driver-harness.config.example.json        copy to driver-harness.config.json
 driver-harness.config.schema.json         config schema
 README.md                                 human-facing overview and prompt examples
@@ -83,29 +87,30 @@ ask the user to install Python 3.11+ and rerun the current agent/session.
 git submodule update --init --recursive
 ```
 
-2. Create Python environments and install the MCP servers:
+2. Create Python environments for `driver-harness-mcp` and `vmware-mcp`:
 
 ```powershell
 py -3.11 -m venv driver-harness-mcp\.venv
 .\driver-harness-mcp\.venv\Scripts\python.exe -m pip install -U pip
 .\driver-harness-mcp\.venv\Scripts\python.exe -m pip install -e .\driver-harness-mcp
 
-py -3.11 -m venv third_party\windbg-ext-mcp\.venv
-.\third_party\windbg-ext-mcp\.venv\Scripts\python.exe -m pip install -U pip
-.\third_party\windbg-ext-mcp\.venv\Scripts\python.exe -m pip install -e .\third_party\windbg-ext-mcp
-
 py -3.11 -m venv third_party\vmware-mcp\.venv
 .\third_party\vmware-mcp\.venv\Scripts\python.exe -m pip install -U pip
 .\third_party\vmware-mcp\.venv\Scripts\python.exe -m pip install -e .\third_party\vmware-mcp
 ```
 
-3. Copy the prebuilt WinDbg extension to the stable ProgramData path:
+`windbg-mcp.exe` is a native stdio MCP server and does not need a Python venv.
+
+3. Copy the self-developed WinDbg binaries to the stable ProgramData path:
 
 ```powershell
 New-Item -ItemType Directory -Force C:\ProgramData\driver-harness-mcp\bin | Out-Null
-Copy-Item .\bin\windbgmcpExt.dll C:\ProgramData\driver-harness-mcp\bin\windbgmcpExt.dll -Force
-Get-FileHash C:\ProgramData\driver-harness-mcp\bin\windbgmcpExt.dll -Algorithm SHA256
-Get-Content .\bin\windbgmcpExt.dll.sha256
+Copy-Item .\bin\mcpext.dll C:\ProgramData\driver-harness-mcp\bin\mcpext.dll -Force
+Copy-Item .\bin\windbg-mcp.exe C:\ProgramData\driver-harness-mcp\bin\windbg-mcp.exe -Force
+Get-FileHash C:\ProgramData\driver-harness-mcp\bin\mcpext.dll -Algorithm SHA256
+Get-FileHash C:\ProgramData\driver-harness-mcp\bin\windbg-mcp.exe -Algorithm SHA256
+Get-Content .\bin\mcpext.dll.sha256
+Get-Content .\bin\windbg-mcp.exe.sha256
 ```
 
 4. Create the user config:
@@ -132,8 +137,8 @@ Fill in:
 Get-Process vmmon64 -ErrorAction SilentlyContinue | Stop-Process -Force
 
 $windbg = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
-$dll = "C:\ProgramData\driver-harness-mcp\bin\windbgmcpExt.dll"
-$template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpstart; g`""
+$dll = "C:\ProgramData\driver-harness-mcp\bin\mcpext.dll"
+$template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpext.start; g`""
 
 New-Item -Path HKLM:\Software\VirtualKD-Redux\Monitor -Force | Out-Null
 Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name DebuggerType -Type DWord -Value 2
@@ -170,9 +175,9 @@ client's existing MCP config.
       "command": "<REPO_ROOT>\\driver-harness-mcp\\.venv\\Scripts\\python.exe",
       "args": ["-m", "driver_harness_mcp.server"]
     },
-    "windbg": {
-      "command": "<REPO_ROOT>\\third_party\\windbg-ext-mcp\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "mcp_server.server"]
+    "windbg-mcp": {
+      "command": "<REPO_ROOT>\\bin\\windbg-mcp.exe",
+      "args": []
     },
     "vmware": {
       "command": "<REPO_ROOT>\\third_party\\vmware-mcp\\.venv\\Scripts\\python.exe",
@@ -185,8 +190,7 @@ client's existing MCP config.
 }
 ```
 
-If the client supports per-server working directories, set each server's cwd to
-the repository root or the corresponding package directory.
+If the client supports per-server working directories, set cwd to the repo root.
 
 ## Required Session Start Sequence
 
@@ -214,8 +218,8 @@ driver-harness-mcp.start_vkd_monitor()
 driver-harness-mcp.cleanup_windbg_instances(only_harness_mcp=true)
 ```
 
-This first asks reachable WinDbg MCP sessions to exit themselves through
-`exit_windbg`, then falls back to host-side process termination.
+This first tries the reachable WinDbg MCP session's `exit` operation, then
+falls back to host-side process termination for remaining stale WinDbg windows.
 
 5. Recover the VM:
 
@@ -242,8 +246,7 @@ commands such as `lm`, `k`, `.bugcheck`, `.dbgprint`, or `!analyze -v`.
 
 ## Normal Driver Load Test
 
-For an ordinary `.sys` load/unload verification, do not generate ad-hoc guest
-scripts. Call:
+For an ordinary `.sys` load/unload verification, call:
 
 ```text
 driver-harness-mcp.run_driver_load_verify(
@@ -279,10 +282,15 @@ Interpret the returned JSON:
 ## Crash and Live Debugging
 
 - Before crash analysis, call `ensure_debugger_ready(desired_state="broken")`.
-- Use `windbg-ext-mcp.run_command` for `!analyze -v`, `.bugcheck`, `k`, `lm`,
+- Use `windbg-mcp.wm_session` as a liveness/state probe.
+- Use `windbg-mcp.wm_run_cmd` for `!analyze -v`, `.bugcheck`, `k`, `lm`,
   `.trap`, `.cxr`, and targeted inspection commands.
-- If the target is running, call `windbg-ext-mcp.break_in` or
-  `driver-harness-mcp.ensure_debugger_ready(desired_state="broken")` first.
+- Use `windbg-mcp.wm_break_in` or
+  `driver-harness-mcp.ensure_debugger_ready(desired_state="broken")` before
+  inspection if the target is running.
+- Use `windbg-mcp.wm_wait_event` instead of polling for bugcheck, break, or
+  breakpoint events.
+- Use `windbg-mcp.wm_analyze_crash` for structured BSOD reports.
 - Copy crash artifacts out before reverting.
 - Revert after BSOD testing unless the user explicitly asks to keep the live
   debug state.
@@ -305,16 +313,16 @@ an old snapshot. Before every restore:
 driver-harness-mcp.cleanup_windbg_instances(only_harness_mcp=true)
 ```
 
-If a specific live WinDbg MCP session must close:
+If a specific live WinDbg MCP session should be detached:
 
 ```text
 driver-harness-mcp.exit_windbg(dry_run=true)
 driver-harness-mcp.exit_windbg(dry_run=false)
 ```
 
-Prefer MCP self-exit over `taskkill` when the pipe is reachable, because the
-extension can close its own elevated WinDbg process even when the agent lacks
-external process termination rights.
+The self-developed `wm_exit` operation detaches the dbgeng session. If the
+WinDbg UI remains alive after MCP exit, `cleanup_windbg_instances` falls back
+to host-side process termination.
 
 ## What Not To Do
 

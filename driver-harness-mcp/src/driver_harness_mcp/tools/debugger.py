@@ -13,21 +13,34 @@ from .windbg_pipe import PipeClient, PipeError
 
 
 RUNNING_STATUS_NAMES = {
+    "GO",
     "DEBUG_STATUS_GO",
+    "GO_HANDLED",
     "DEBUG_STATUS_GO_HANDLED",
+    "GO_NOT_HANDLED",
     "DEBUG_STATUS_GO_NOT_HANDLED",
+    "STEP_OVER",
     "DEBUG_STATUS_STEP_OVER",
+    "STEP_INTO",
     "DEBUG_STATUS_STEP_INTO",
+    "STEP_BRANCH",
     "DEBUG_STATUS_STEP_BRANCH",
+    "REVERSE_GO",
     "DEBUG_STATUS_REVERSE_GO",
+    "REVERSE_STEP_BRANCH",
     "DEBUG_STATUS_REVERSE_STEP_BRANCH",
+    "REVERSE_STEP_OVER",
     "DEBUG_STATUS_REVERSE_STEP_OVER",
+    "REVERSE_STEP_INTO",
     "DEBUG_STATUS_REVERSE_STEP_INTO",
 }
 
 BROKEN_STATUS_NAMES = {
+    "BREAK",
     "DEBUG_STATUS_BREAK",
+    "WAIT_INPUT",
     "DEBUG_STATUS_WAIT_INPUT",
+    "TIMEOUT",
     "DEBUG_STATUS_TIMEOUT",
 }
 
@@ -39,7 +52,9 @@ def _is_harness_windbg(process: dict[str, Any]) -> bool:
     ).lower()
     markers = (
         "windbgmcpext.dll",
+        "mcpext.dll",
         "!mcpstart",
+        "!mcpext.start",
         r"\\.\pipe\windbgmcp",
         "com:pipe",
     )
@@ -109,10 +124,10 @@ def cleanup_windbg_instances(
     """Terminate stale WinDbg instances before VirtualKD auto-starts a new one.
 
     By default this only targets processes whose command line looks like it was
-    launched by this harness (for example it contains windbgmcpExt.dll or
-    !mcpstart). This avoids killing unrelated manual debugging sessions. When
-    possible, ask the WinDbg MCP extension to exit its own host process first;
-    this works even when the external agent cannot kill elevated WinDbg.
+    launched by this harness (for example it contains mcpext.dll or
+    !mcpext.start). This avoids killing unrelated manual debugging sessions. When
+    possible, ask the WinDbg MCP extension to detach/exit first; remaining
+    stale windows are then handled by host-side process termination.
     """
     processes = _windbg_processes()
     targets = [
@@ -200,11 +215,10 @@ def exit_windbg(
     wait_for_exit: bool = True,
     wait_seconds: int = 5,
 ) -> dict:
-    """Ask the WinDbg process hosting windbgmcpExt.dll to exit itself.
+    """Ask the WinDbg MCP extension to detach/exit its debug session.
 
-    This uses the extension's ``exit_windbg`` handler instead of killing a host
-    process from the outside, which avoids common elevation/session permission
-    failures.
+    The self-hosted ``mcpext.dll`` protocol exposes ``exit``. If the WinDbg UI
+    remains alive, cleanup falls back to host-side process termination.
     """
     if not is_pipe_available(pipe_name, timeout_ms=250):
         return {
@@ -214,20 +228,14 @@ def exit_windbg(
             "windbg_processes": list_windbg_processes()["processes"],
         }
 
-    bounded_delay = max(0, min(int(delay_ms), 10000))
     client = PipeClient(pipe_name)
     response: dict[str, Any] | None = None
     try:
         client.connect(timeout_seconds=timeout_seconds)
-        response = client.send(
-            "exit_windbg",
-            {
-                "delay_ms": bounded_delay,
-                "exit_code": int(exit_code),
-                "dry_run": bool(dry_run),
-            },
-            timeout_seconds=timeout_seconds,
-        )
+        if dry_run:
+            response = client.send("session", {}, timeout_seconds=timeout_seconds)
+        else:
+            response = client.send("exit", {}, timeout_seconds=timeout_seconds)
     except PipeError as exc:
         return {
             "ok": False,
@@ -239,10 +247,10 @@ def exit_windbg(
     finally:
         client.close()
 
-    if not response or response.get("status") != "success":
+    if not response or response.get("_protocol_ok") is False:
         return {
             "ok": False,
-            "message": "exit_windbg handler failed; install the current windbgmcpExt.dll.",
+            "message": "exit handler failed; install the current mcpext.dll.",
             "response": response,
             "pipe_name": pipe_name,
             "windbg_processes": list_windbg_processes()["processes"],
@@ -259,7 +267,11 @@ def exit_windbg(
 
     return {
         "ok": True,
-        "message": "WinDbg exit requested via MCP.",
+        "message": (
+            "WinDbg MCP session is reachable."
+            if dry_run
+            else "WinDbg MCP exit requested."
+        ),
         "pipe_name": pipe_name,
         "response": response,
         "dry_run": dry_run,
@@ -273,7 +285,7 @@ def query_debugger_status(
     *,
     timeout_seconds: int = 10,
 ) -> dict:
-    """Ask windbgmcpExt.dll for the target execution state without changing it."""
+    """Ask mcpext.dll for the target execution state without changing it."""
     if not is_pipe_available(pipe_name, timeout_ms=250):
         return {
             "ok": False,
@@ -285,11 +297,7 @@ def query_debugger_status(
     client = PipeClient(pipe_name)
     try:
         client.connect(timeout_seconds=timeout_seconds)
-        response = client.send(
-            "debugger_status",
-            {"timeout_ms": timeout_seconds * 1000},
-            timeout_seconds=timeout_seconds,
-        )
+        response = client.send("session", {}, timeout_seconds=timeout_seconds)
     except PipeError as exc:
         return {
             "ok": False,
@@ -302,29 +310,30 @@ def query_debugger_status(
         client.close()
 
     if not response:
-        return {"ok": False, "message": "empty debugger_status response", "pipe_name": pipe_name}
-    if response.get("status") != "success":
+        return {"ok": False, "message": "empty session response", "pipe_name": pipe_name}
+    if response.get("_protocol_ok") is False:
         return {
             "ok": False,
             "message": (
-                "debugger_status failed; install the current windbgmcpExt.dll "
-                "if this handler is missing."
+                "session failed; install the current mcpext.dll and run !mcpext.start."
             ),
             "response": response,
             "pipe_name": pipe_name,
             "windbg_processes": list_windbg_processes()["processes"],
         }
 
-    status_name = str(response.get("execution_status_name", ""))
+    status_name = str(response.get("exec_status", response.get("execution_status_name", "")))
+    is_running = bool(response.get("is_running", status_name in RUNNING_STATUS_NAMES))
+    is_broken = bool(response.get("is_broken", status_name in BROKEN_STATUS_NAMES))
     return {
         "ok": True,
         "pipe_name": pipe_name,
         "execution_status": response.get("execution_status"),
         "execution_status_name": status_name,
-        "is_running": bool(response.get("is_running", status_name in RUNNING_STATUS_NAMES)),
-        "is_broken": bool(response.get("is_broken", status_name in BROKEN_STATUS_NAMES)),
+        "is_running": is_running,
+        "is_broken": is_broken,
         "can_execute_commands": bool(
-            response.get("can_execute_commands", status_name not in RUNNING_STATUS_NAMES)
+            response.get("can_execute_commands", is_broken and not is_running)
         ),
         "response": response,
         "windbg_processes": list_windbg_processes()["processes"],
@@ -336,15 +345,63 @@ def _wait_for_state(
     predicate,
     *,
     timeout_seconds: int,
+    client: PipeClient | None = None,
 ) -> dict:
     deadline = time.monotonic() + timeout_seconds
-    last = query_debugger_status(pipe_name, timeout_seconds=max(1, min(timeout_seconds, 5)))
+    last = _query_debugger_status_with_client(
+        pipe_name,
+        client,
+        timeout_seconds=max(1, min(timeout_seconds, 5)),
+    )
     while time.monotonic() < deadline:
         if last.get("ok") and predicate(last):
             return last
         time.sleep(0.25)
-        last = query_debugger_status(pipe_name, timeout_seconds=max(1, min(timeout_seconds, 5)))
+        last = _query_debugger_status_with_client(
+            pipe_name,
+            client,
+            timeout_seconds=max(1, min(timeout_seconds, 5)),
+        )
     return last
+
+
+def _query_debugger_status_with_client(
+    pipe_name: str,
+    client: PipeClient | None,
+    *,
+    timeout_seconds: int,
+) -> dict:
+    if client is None:
+        return query_debugger_status(pipe_name, timeout_seconds=timeout_seconds)
+    try:
+        response = client.send("session", {}, timeout_seconds=timeout_seconds)
+    except PipeError as exc:
+        return {
+            "ok": False,
+            "message": str(exc),
+            "stage": exc.stage,
+            "pipe_name": pipe_name,
+        }
+    if not response or response.get("_protocol_ok") is False:
+        return {
+            "ok": False,
+            "message": "session failed",
+            "response": response,
+            "pipe_name": pipe_name,
+        }
+    status_name = str(response.get("exec_status", ""))
+    is_running = bool(response.get("is_running", status_name in RUNNING_STATUS_NAMES))
+    is_broken = bool(response.get("is_broken", status_name in BROKEN_STATUS_NAMES))
+    return {
+        "ok": True,
+        "pipe_name": pipe_name,
+        "execution_status": response.get("execution_status"),
+        "execution_status_name": status_name,
+        "is_running": is_running,
+        "is_broken": is_broken,
+        "can_execute_commands": is_broken and not is_running,
+        "response": response,
+    }
 
 
 def ensure_debugger_ready(
@@ -386,18 +443,19 @@ def ensure_debugger_ready(
         try:
             client.connect(timeout_seconds=timeout_seconds)
             client.send(
-                "execute_command",
-                {"command": "g", "timeout_ms": go_timeout_ms},
+                "run_cmd",
+                {"cmd": "g", "timeout_ms": go_timeout_ms},
                 read=False,
             )
-            actions.append({"action": "execute_command", "command": "g", "read_response": False})
+            actions.append({"action": "run_cmd", "command": "g", "read_response": False})
+            status = _wait_for_state(
+                pipe_name,
+                lambda value: bool(value.get("is_running")),
+                timeout_seconds=timeout_seconds,
+                client=client,
+            )
         finally:
             client.close()
-        status = _wait_for_state(
-            pipe_name,
-            lambda value: bool(value.get("is_running")),
-            timeout_seconds=timeout_seconds,
-        )
 
     if desired == "broken" and status.get("is_running"):
         if not break_if_running:
@@ -415,13 +473,14 @@ def ensure_debugger_ready(
                 timeout_seconds=timeout_seconds + 5,
             )
             actions.append({"action": "break_in", "response": response})
+            status = _wait_for_state(
+                pipe_name,
+                lambda value: bool(value.get("can_execute_commands")),
+                timeout_seconds=timeout_seconds,
+                client=client,
+            )
         finally:
             client.close()
-        status = _wait_for_state(
-            pipe_name,
-            lambda value: bool(value.get("can_execute_commands")),
-            timeout_seconds=timeout_seconds,
-        )
 
     ok = bool(status.get("ok"))
     if desired == "running":

@@ -1,7 +1,7 @@
 [project]
 name = "driver-harness-mcp"
 version = "0.1.0"
-description = "High-level MCP tools that orchestrate vmware-mcp and windbg-ext-mcp for Windows kernel driver testing."
+description = "High-level MCP tools that orchestrate VMware, VirtualKD, and self-hosted WinDbg MCP for Windows kernel driver testing."
 authors = [{ name = "Letenz" }]
 license = { text = "MIT" }
 readme = "../README.md"

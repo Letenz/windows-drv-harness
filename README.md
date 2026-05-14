@@ -9,8 +9,8 @@ The repo is intentionally small:
 skills/kernel-driver-testing/SKILL.md   AI operating manual
 driver-harness-mcp/                     high-level MCP server
 third_party/vmware-mcp/                 VMware MCP submodule
-third_party/windbg-ext-mcp/             WinDbg MCP submodule and extension source
-bin/windbgmcpExt.dll                    prebuilt WinDbg MCP extension
+bin/mcpext.dll                          self-developed WinDbg extension
+bin/windbg-mcp.exe                      self-developed WinDbg MCP stdio server
 driver-harness.config.example.json      user config template
 driver-harness.config.schema.json       config schema
 ```
@@ -92,7 +92,9 @@ name, and vmmon64.exe path if bounded probing cannot find it.
 
 - `vmmon64.exe` must run before restoring a VirtualKD snapshot.
 - VirtualKD registry must use `DebuggerType=2` with a custom WinDbg command
-  that loads `windbgmcpExt.dll` and runs `!mcpstart`.
+  that loads `mcpext.dll` and runs `!mcpext.start`.
+- The WinDbg extension pipe accepts one client at a time; avoid using direct
+  `windbg-mcp` tools while a high-level `driver-harness-mcp` test is running.
 - Old WinDbg windows should be closed before each restore; the harness exposes
   `cleanup_windbg_instances` and `exit_windbg` for that.
 - Do not commit `driver-harness.config.json`.
