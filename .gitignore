@@ -17,7 +17,7 @@ uv.lock
 .DS_Store
 Thumbs.db
 
-# Build artifacts (C++ extension)
+# Build artifacts
 *.obj
 *.pdb
 *.ilk
@@ -40,10 +40,12 @@ Release/
 .env.local
 local-config/
 secrets/
+driver-harness.config.json
 
-# Logs
+# Logs and runtime artifacts
 *.log
 logs/
+session_snapshots/
 
 # Test artifacts / dumps
 *.dmp
@@ -57,15 +59,6 @@ crash-dumps/
 # OS
 desktop.ini
 
-# Local-only working dirs (never commit)
+# Local-only working dirs
 .release-staging/
 .test-baseline-backup/
-
-# Per-user real configuration — MUST NOT be committed
-# (the example + schema ARE committed; the real file that holds actual
-#  paths / snapshot names / guest passwords is not)
-driver-harness.config.json
-
-# Runtime artifacts left by installer/doctor (always local, never commit)
-installer/.vkd-registry-backup-*.reg
-session_snapshots/

@@ -1,134 +1,44 @@
 {
   "$schema": "./driver-harness.config.schema.json",
 
-  "_comment_readme": [
-    "This is driver-harness-mcp's per-user configuration file.",
-    "",
-    "HOW TO USE:",
-    "  1. Copy this file to `driver-harness.config.json` (same directory).",
-    "  2. Fill in your real values.",
-    "  3. `driver-harness.config.json` is gitignored and will NEVER be committed.",
-    "",
-    "WHO FILLS THIS IN:",
-    "  - Most fields: you, the human operator.",
-    "  - Some host paths: your AI assistant can probe config/env/registry/default paths.",
-    "    It should NOT scan whole drives or broad folders.",
-    "    If bounded probing fails, it should ASK YOU for the path.",
-    "",
-    "ALL FIELDS USE ABSOLUTE PATHS. Forward OR back slashes both work in JSON",
-    "as long as backslashes are escaped: `C:\\\\VMs\\\\test.vmx` or `C:/VMs/test.vmx`.",
-    "",
-    "You can safely delete the `_comment_*` keys in your real config."
+  "_comment": [
+    "Copy this file to driver-harness.config.json and fill in real values.",
+    "driver-harness.config.json is gitignored; do not commit VM paths or secrets.",
+    "Agents may probe explicit input, this config, env vars, registry values,",
+    "and fixed default paths only. If a tool is still missing, ask the user."
   ],
 
   "vm": {
+    "vmx_path": "E:\\VMs\\kernel-test\\kernel-test.vmx",
+    "baseline_snapshot": "virtualkd_ready",
     "_comment": [
-      "The VMware Workstation guest VM this harness controls.",
-      "AI can NOT guess these — you must fill them in."
-    ],
-    "vmx_path": "E:\\VMs\\my-kernel-test-vm\\my-kernel-test-vm.vmx",
-    "baseline_snapshot": "test_mcp_ready",
-    "_comment_baseline_snapshot": [
-      "The VM snapshot the harness reverts to before every test run.",
-      "",
-      "IT MUST ALREADY EXIST. If it does not, your AI will ask you to:",
-      "  1. Boot the guest VM to a known-good state (network up, crypto",
-      "     services started, VirtualKD patch applied, etc.)",
-      "  2. In VMware Workstation: VM -> Snapshot -> Take Snapshot",
-      "  3. Name the snapshot exactly as above.",
-      "",
-      "Baseline snapshot requirements:",
-      "  - `bcdedit /debug on` has been run inside the guest and it rebooted.",
-      "  - `bcdedit /set testsigning on` has been run (for self-signed drivers).",
-      "  - VirtualKD-Redux guest driver is installed, OR KDNET is configured.",
-      "  - Restoring this snapshot should immediately enter the debug-ready boot path",
-      "    when host vmmon64.exe is already running.",
-      "  - A working admin user exists with a non-empty password.",
-      "  - VMware Tools is installed (needed for vmrun guest operations)."
+      "baseline_snapshot must already exist.",
+      "It must be taken after guest VirtualKD/KDNET, VMware Tools, debug boot,",
+      "testsigning as needed, and guest admin credentials are ready."
     ]
   },
 
   "guest": {
-    "_comment": [
-      "Credentials and paths INSIDE the guest VM. Used by vmrun -gu/-gp and",
-      "for driver deployment."
-    ],
     "admin_user": "Administrator",
     "admin_password": "${env:DRIVER_HARNESS_GUEST_PASSWORD}",
-    "_comment_admin_password": [
-      "Two ways to set this:",
-      "",
-      "  (a) Literal string (convenient, but the file is on disk):",
-      "        \"admin_password\": \"mypass\"",
-      "",
-      "  (b) Environment variable reference (recommended):",
-      "        \"admin_password\": \"${env:DRIVER_HARNESS_GUEST_PASSWORD}\"",
-      "      Then set that env var in your shell / CI / secret manager.",
-      "",
-      "IMPORTANT: vmrun -gp does NOT accept empty passwords. If the guest",
-      "account has no password, set one first:",
-      "    net user <username> <newpassword>",
-      "...inside the guest. Then retake the baseline snapshot."
-    ],
     "desktop_path": "C:\\Users\\Administrator\\Desktop",
-    "_comment_desktop_path": [
-      "Where the harness will stage driver binaries (.sys files) inside the",
-      "guest. Any writable directory works; Desktop is just convenient."
-    ],
     "arch": "x64",
     "os_version_hint": "win10_19041"
   },
 
   "host": {
-    "_comment": [
-      "Tool paths on the host. Your AI can probe explicit inputs, env vars,",
-      "registry values, and fixed default install paths. It should not run",
-      "recursive or drive-wide filesystem searches. If AI still cannot find a",
-      "tool, it should ASK YOU for the path and write your answer back here."
-    ],
     "vmrun_path": "",
-    "_comment_vmrun_path": [
-      "Absolute path to `vmrun.exe`. Leave empty to let the AI/installer",
-      "probe the common locations (`C:\\Program Files (x86)\\VMware\\...`,",
-      "`C:\\Program Files\\VMware\\...`) and VMware registry keys. If VMware",
-      "is installed somewhere unusual, the AI should ask you for the path."
-    ],
     "vmmon64_path": "",
-    "_comment_vmmon64_path": [
-      "Absolute path to VirtualKD-Redux's `vmmon64.exe`. Same rule as above.",
-      "If empty, the AI may probe env vars, registry values, and default install",
-      "paths only. If probing fails, give the path to the AI and let it write",
-      "the confirmed value here.",
-      "vmmon64.exe must be running before the AI restores/starts a VirtualKD",
-      "snapshot, because it is the host monitor that auto-launches WinDbg.",
-      "Starting/restarting vmmon64.exe and writing HKLM registry values work best",
-      "when the current AI agent/session is running as Administrator.",
-      "Typical location:",
-      "  F:\\download\\VirtualKD-Redux-<version>\\vmmon64.exe"
-    ],
-    "vmnet8_ip": "",
-    "_comment_vmnet8_ip": [
-      "The host's IP on the VMware NAT network (VMnet8). Only needed if you",
-      "use native KDNET (not VirtualKD-Redux). On VirtualKD-Redux setups this",
-      "can stay empty. Typical values: 192.168.152.1, 192.168.75.1, etc.",
-      "Your AI can find this via `Get-NetIPAddress -InterfaceAlias VMnet8`."
-    ],
     "symbols_path": "D:\\symbols",
-    "_comment_symbols_path": [
-      "Local directory used as WinDbg's symbol cache. The directory does not",
-      "have to exist yet; WinDbg will create and populate it on first use."
+    "vmnet8_ip": "",
+    "_comment": [
+      "Leave vmrun_path/vmmon64_path empty only if they are discoverable from",
+      "default locations, environment variables, or registry values.",
+      "vmmon64.exe must run before restoring/starting a VirtualKD snapshot."
     ]
   },
 
   "flags": {
-    "_comment": [
-      "Boolean hints the AI uses to pick the right workflow. Set them to `true`",
-      "once you've done the corresponding setup step, so the AI doesn't nag.",
-      "",
-      "Important: baseline_snapshot_created should only be true for a snapshot",
-      "taken after VirtualKD/KDNET, testsigning as needed, VMware Tools, and",
-      "guest credentials are already working."
-    ],
     "guest_testsigning_enabled": false,
     "guest_kdnet_configured": false,
     "guest_vkd_installed": false,

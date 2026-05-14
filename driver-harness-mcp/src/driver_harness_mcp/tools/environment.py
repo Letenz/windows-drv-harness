@@ -269,7 +269,8 @@ def diagnose_environment(
             "and reliable vmmon restart.",
         ),
         _check("windbgmcpExt.dll", bool(ext_dll), ext_dll,
-               "Run installer\\install.ps1 or set DRIVER_HARNESS_EXT_DLL."),
+               "Copy bin\\windbgmcpExt.dll to C:\\ProgramData\\driver-harness-mcp\\bin "
+               "or set DRIVER_HARNESS_EXT_DLL."),
         _check("windbgmcp pipe", is_pipe_available(pipe_name), pipe_name,
                "The pipe appears only after VM + WinDbg + !mcpstart are ready."),
     ]
@@ -285,7 +286,8 @@ def diagnose_environment(
             "VKD DebuggerType=2",
             debugger_type == "2",
             debugger_type,
-            "Run installer\\steps\\write-registry.ps1 as Administrator.",
+            "Stop vmmon64.exe, set HKLM VirtualKD-Redux Monitor DebuggerType=2 "
+            "as Administrator, then restart vmmon64.exe.",
         )
     )
     checks.append(

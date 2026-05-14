@@ -1,9 +1,8 @@
 """MCP server entrypoint.
 
-This server exposes high-level orchestration tools that wrap operations from
-`vmware-mcp` and `windbg-ext-mcp`. Tools intentionally don't reach into the
-host's other MCP servers via MCP — instead they call the same underlying APIs
-(vmrun, named pipes) directly. This keeps the harness self-contained.
+This server exposes high-level orchestration tools for VMware, VirtualKD, and
+WinDbg MCP automation. The tools call the underlying APIs directly (vmrun and
+the WinDbg named pipe) so the harness remains self-contained.
 """
 
 from __future__ import annotations
@@ -32,8 +31,8 @@ logger = logging.getLogger("driver_harness_mcp")
 def build_server() -> FastMCP:
     mcp = FastMCP("driver-harness-mcp")
 
-    # High-level tools. Prefer these from skills before falling back to raw
-    # vmware/windbg primitives; they encode the fragile guest/debugger timing.
+    # High-level tools. Prefer these from the skill before falling back to raw
+    # VMware or WinDbg primitives; they encode the fragile timing.
     mcp.tool()(diagnose_environment)
     mcp.tool()(start_vkd_monitor)
     mcp.tool()(list_windbg_processes)
