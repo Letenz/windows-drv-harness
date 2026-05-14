@@ -19,7 +19,7 @@
         "vmx_path": {
           "type": "string",
           "minLength": 1,
-          "description": "Absolute path to the guest's .vmx file. Example: E:\\VMs\\test-vm\\test-vm.vmx",
+          "description": "Absolute path to the guest's .vmx file, provided or explicitly confirmed by the user. Agents must not discover this by drive-wide scanning or silently choosing a vmrun list result. Example: E:\\VMs\\test-vm\\test-vm.vmx",
           "pattern": "\\.vmx$"
         },
         "baseline_snapshot": {

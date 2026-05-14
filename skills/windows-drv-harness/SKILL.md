@@ -64,6 +64,9 @@ patch code -> repeat
   probing fails, ask the user for the path.
 - Never run recursive `Get-ChildItem` from a drive root to discover `.vmx`,
   `vmrun.exe`, `vmmon64.exe`, or WinDbg.
+- Do not infer the target VMX. If `vm.vmx_path` is missing, ask the user for
+  the VMX path. `vmrun list` is only a verification aid after the user has
+  provided or confirmed a VMX; it is not authorization to pick a VM.
 - Do not write plaintext passwords to `windows-drv-harness.config.json`. If
   the user gives a password in chat, keep it in memory for the current run or
   ask for an environment variable name.
@@ -197,8 +200,9 @@ Use this order. Do not recurse or scan drives.
 
 - `vmrun.exe`: explicit input, `host.vmrun_path`, `VMRUN_PATH`, VMware
   Workstation registry `InstallPath`, then default install paths.
-- `.vmx`: explicit input or `vm.vmx_path` from config. `vmrun list` may reveal
-  a running VM, but ask the user to confirm it. Do not enumerate `*.vmx`.
+- `.vmx`: explicit input or `vm.vmx_path` from config only. If missing, ask
+  the user. Do not enumerate `*.vmx`. Do not select a VM just because
+  `vmrun list` shows one running VM.
 - `vmmon64.exe`: explicit input, `host.vmmon64_path`,
   `WINDOWS_DRV_HARNESS_VMMON64`, `VMMON64_PATH`, VirtualKD registry
   `InstallPath`, then `C:\Program Files\VirtualKD-Redux\vmmon64.exe` and
@@ -213,7 +217,8 @@ start, stop, or otherwise touch the VM until every item passes.
 
 1. Read `<SKILL_DIR>\windows-drv-harness.config.json`. If it is missing,
    create it from the example and ask only for missing values. Ask for VMX and
-   snapshot names; never discover them by drive scanning.
+   snapshot names; never discover them by drive scanning or by choosing from
+   `vmrun list`.
 2. If `guest.admin_password` is missing, ask for a password or env var. If the
    user provides a password directly, keep it in a transient variable and do
    not write it into config.

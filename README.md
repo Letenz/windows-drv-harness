@@ -81,8 +81,10 @@ vmrun for VMware operations, and bounded PowerShell for vmmon/VirtualKD
 registry work. Run the skill's preflight gate before any vmrun operation:
 verify VirtualKD registry, restart vmmon64.exe, close stale WinDbg, then wait
 for the windbgmcp pipe after restore/start. Do not scan whole drives; ask me
-for missing paths after bounded probing fails. Do not store plaintext
-passwords in config. Ask before registering MCP servers in my current client.
+for the VMX path and any missing paths after bounded probing fails. Do not
+choose a VM from vmrun list without my explicit confirmation. Do not store
+plaintext passwords in config. Ask before registering MCP servers in my current
+client.
 ```
 
 For a driver test:
