@@ -91,24 +91,22 @@ py -3.11 -m venv .\vmware-mcp\.venv
 .\vmware-mcp\.venv\Scripts\python.exe -m pip install -e .\vmware-mcp
 ```
 
-`windbg-mcp.exe` is native and does not need a Python venv.
+`windbg-mcp.exe` is native and does not need a Python venv. Keep
+`mcpext.dll` beside it and load that bundled DLL directly.
 
-3. Copy WinDbg MCP binaries to a stable host path:
-
-```powershell
-New-Item -ItemType Directory -Force C:\ProgramData\windows-drv-harness\windbg-mcp | Out-Null
-Copy-Item .\windbg-mcp\mcpext.dll C:\ProgramData\windows-drv-harness\windbg-mcp\mcpext.dll -Force
-Copy-Item .\windbg-mcp\windbg-mcp.exe C:\ProgramData\windows-drv-harness\windbg-mcp\windbg-mcp.exe -Force
-Get-FileHash C:\ProgramData\windows-drv-harness\windbg-mcp\mcpext.dll -Algorithm SHA256
-Get-FileHash C:\ProgramData\windows-drv-harness\windbg-mcp\windbg-mcp.exe -Algorithm SHA256
-Get-Content .\windbg-mcp\mcpext.dll.sha256
-Get-Content .\windbg-mcp\windbg-mcp.exe.sha256
-```
-
-4. Create local config:
+3. Create local config:
 
 ```powershell
 Copy-Item .\windows-drv-harness.config.example.json .\windows-drv-harness.config.json
+```
+
+Optionally verify bundled binary hashes after replacing `windbg-mcp` builds:
+
+```powershell
+Get-FileHash .\windbg-mcp\mcpext.dll -Algorithm SHA256
+Get-Content .\windbg-mcp\mcpext.dll.sha256
+Get-FileHash .\windbg-mcp\windbg-mcp.exe -Algorithm SHA256
+Get-Content .\windbg-mcp\windbg-mcp.exe.sha256
 ```
 
 Fill in:
@@ -122,13 +120,13 @@ Fill in:
 - `flags.baseline_snapshot_created=true` only after the baseline snapshot is
   truly VirtualKD/KDNET ready
 
-5. Configure VirtualKD-Redux registry as Administrator. Stop old vmmon first:
+4. Configure VirtualKD-Redux registry as Administrator. Stop old vmmon first:
 
 ```powershell
 Get-Process vmmon64 -ErrorAction SilentlyContinue | Stop-Process -Force
 
 $windbg = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
-$dll = "C:\ProgramData\windows-drv-harness\windbg-mcp\mcpext.dll"
+$dll = (Resolve-Path .\windbg-mcp\mcpext.dll).Path
 $template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpext.start; g`""
 
 New-Item -Path HKLM:\Software\VirtualKD-Redux\Monitor -Force | Out-Null
@@ -142,7 +140,7 @@ Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name CustomDebugg
 If the agent is not elevated, stop and ask the user to grant admin rights or
 perform this step manually.
 
-6. Start `vmmon64.exe` before any VM restore/start:
+5. Start `vmmon64.exe` before any VM restore/start:
 
 ```powershell
 $vmmon = "<path from config, env, registry, or explicit user input>"
@@ -152,7 +150,7 @@ Start-Process -FilePath $vmmon -WindowStyle Hidden
 If bounded probing cannot locate `vmmon64.exe`, ask the user for it and write
 it to `host.vmmon64_path`.
 
-7. After setup is green, ask the user whether to register this skill and the
+6. After setup is green, ask the user whether to register this skill and the
 MCP servers in the current agent/client.
 
 ## MCP Server Registration
