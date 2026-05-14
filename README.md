@@ -1,32 +1,36 @@
-# driver-harness-mcp
+# windows-kernel-driver-lab
 
-AI-operated Windows kernel driver test harness for VMware Workstation,
-VirtualKD-Redux, WinDbg, and MCP.
+Self-contained AI skill bundle for Windows kernel driver testing with VMware
+Workstation, VirtualKD-Redux, WinDbg, `windbg-mcp`, and `vmware-mcp`.
 
-The repo is intentionally small:
+The useful payload lives under one skill directory:
 
 ```text
-skills/kernel-driver-testing/SKILL.md   AI operating manual
-driver-harness-mcp/                     high-level MCP server
-third_party/vmware-mcp/                 VMware MCP submodule
-bin/mcpext.dll                          self-developed WinDbg extension
-bin/windbg-mcp.exe                      self-developed WinDbg MCP stdio server
-driver-harness.config.example.json      user config template
-driver-harness.config.schema.json       config schema
+skills/windows-kernel-driver-lab/
+  SKILL.md
+  windbg-mcp/mcpext.dll
+  windbg-mcp/windbg-mcp.exe
+  vmware-mcp/
+  windows-kernel-driver-lab.config.example.json
+  windows-kernel-driver-lab.config.schema.json
 ```
+
+There is no extra high-level harness MCP server. The AI reads the skill and
+directly uses `windbg-mcp`, `vmware-mcp` or `vmrun.exe`, and bounded
+PowerShell.
 
 ## What It Does
 
-The harness gives an AI agent a closed loop for driver testing:
+The skill gives an AI agent a closed loop for driver testing:
 
 ```text
-build driver -> restore debug-ready VM snapshot -> deploy .sys ->
+build driver -> restore VirtualKD-ready snapshot -> deploy .sys ->
 load driver -> collect WinDbg/guest evidence -> unload -> revert -> patch code
 ```
 
-The agent should use the single skill at
-`skills/kernel-driver-testing/SKILL.md`. That file contains the environment
-setup, VirtualKD rules, MCP registration template, and tool-call order.
+The key is procedural correctness: `vmmon64.exe` must be running before the VM
+is restored, VirtualKD must launch WinDbg with `mcpext.dll`, and the agent must
+use `windbg-mcp` to read debugger state instead of guessing from screenshots.
 
 ## Requirements
 
@@ -36,7 +40,7 @@ setup, VirtualKD rules, MCP registration template, and tool-call order.
 - Windows guest VM with VMware Tools
 - A baseline VMware snapshot that already enters the VirtualKD two-machine
   kernel debugging path when restored
-- Python 3.11+
+- Python 3.10+ for `vmware-mcp`
 - Administrator/elevated agent session for HKLM registry writes and reliable
   `vmmon64.exe` control
 
@@ -46,58 +50,57 @@ setup, VirtualKD rules, MCP registration template, and tool-call order.
 git clone --recursive https://github.com/Letenz/driver-harness-mcp.git
 cd driver-harness-mcp
 
-# Let the AI follow the skill for venv setup, config creation, registry setup,
-# vmmon startup, MCP registration, and the first driver test.
+$skill = ".\skills\windows-kernel-driver-lab"
+Copy-Item "$skill\windows-kernel-driver-lab.config.example.json" "$skill\windows-kernel-driver-lab.config.json"
 ```
 
-Create local config from the template:
+`windows-kernel-driver-lab.config.json` is gitignored. Put VM paths, snapshot
+name, guest credentials, and tool paths there. Prefer `${env:VAR_NAME}` for
+passwords.
+
+Install `vmware-mcp` if you want MCP control of VMware:
 
 ```powershell
-Copy-Item .\driver-harness.config.example.json .\driver-harness.config.json
+py -3.11 -m venv "$skill\vmware-mcp\.venv"
+& "$skill\vmware-mcp\.venv\Scripts\python.exe" -m pip install -U pip
+& "$skill\vmware-mcp\.venv\Scripts\python.exe" -m pip install -e "$skill\vmware-mcp"
 ```
 
-`driver-harness.config.json` is gitignored. Put VM paths, snapshot name, guest
-credentials, and tool paths there. Prefer `${env:VAR_NAME}` for passwords.
+`windbg-mcp.exe` is native and runs directly from
+`skills\windows-kernel-driver-lab\windbg-mcp\windbg-mcp.exe`.
 
 ## Prompt Examples
 
 Use this prompt when handing the repo to an AI agent:
 
 ```text
-Use the skill at skills/kernel-driver-testing/SKILL.md as the only operating
-manual. Diagnose the environment first. Do not restore or start the VM until
-vmmon64.exe is running. Probe missing tool paths only from explicit input,
-config, environment variables, registry values, and fixed default paths. Do not
-scan whole drives. Ask me for vmmon64.exe if bounded probing fails. After setup
-is green, ask before registering the skill or MCP servers in my current client.
+Use skills/windows-kernel-driver-lab/SKILL.md as the operating manual. Resolve
+tool paths relative to that skill directory. Do not look for an extra harness
+MCP server. Use windbg-mcp for debugger state and commands, vmware-mcp or
+vmrun for VMware operations, and bounded PowerShell for vmmon/VirtualKD
+registry work. Do not restore or start the VM until vmmon64.exe is running.
+Do not scan whole drives; ask me for missing paths after bounded probing fails.
+Ask before registering MCP servers in my current client.
 ```
 
 For a driver test:
 
 ```text
-Build my driver, then call driver-harness-mcp.run_driver_load_verify on the
-built .sys. Summarize the evidence. If it fails, patch the smallest relevant
-code area and rerun once.
+Build my driver, restore the VirtualKD-ready snapshot, copy the .sys to the
+guest, load it with sc.exe, collect wm_session/wm_run_cmd evidence, unload it,
+revert the snapshot, and patch the smallest code area if the test fails.
 ```
 
-For first-time setup:
-
-```text
-Help me create driver-harness.config.json. Ask only for the VMX path, the
-VirtualKD-ready baseline snapshot name, guest admin credentials or env-var
-name, and vmmon64.exe path if bounded probing cannot find it.
-```
-
-## Notes For Humans
+## Notes
 
 - `vmmon64.exe` must run before restoring a VirtualKD snapshot.
 - VirtualKD registry must use `DebuggerType=2` with a custom WinDbg command
   that loads `mcpext.dll` and runs `!mcpext.start`.
-- The WinDbg extension pipe accepts one client at a time; avoid using direct
-  `windbg-mcp` tools while a high-level `driver-harness-mcp` test is running.
-- Old WinDbg windows should be closed before each restore; the harness exposes
-  `cleanup_windbg_instances` and `exit_windbg` for that.
-- Do not commit `driver-harness.config.json`.
+- `mcpext.dll` accepts one pipe client at a time.
+- Old WinDbg windows should be closed before each restore if their command line
+  shows `mcpext.dll`, `windbgmcpExt.dll`, `!mcpext.start`, `!mcpstart`, or the
+  `windbgmcp` pipe.
+- Do not commit `windows-kernel-driver-lab.config.json`.
 
 ## License
 

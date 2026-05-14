@@ -40,7 +40,7 @@ Release/
 .env.local
 local-config/
 secrets/
-driver-harness.config.json
+skills/*/*.config.json
 
 # Logs and runtime artifacts
 *.log

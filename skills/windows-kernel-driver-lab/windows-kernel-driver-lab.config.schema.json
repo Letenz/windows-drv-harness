@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
-  "$id": "https://github.com/Letenz/driver-harness-mcp/blob/main/driver-harness.config.schema.json",
-  "title": "driver-harness-mcp user configuration",
-  "description": "Per-user configuration consumed by driver-harness-mcp's MCP server and its AI skills. Copy driver-harness.config.example.json to driver-harness.config.json and fill in your real values.",
+  "$id": "https://github.com/Letenz/driver-harness-mcp/blob/main/skills/windows-kernel-driver-lab/windows-kernel-driver-lab.config.schema.json",
+  "title": "windows-kernel-driver-lab user configuration",
+  "description": "Per-user configuration consumed by the windows-kernel-driver-lab AI skill. Copy windows-kernel-driver-lab.config.example.json to windows-kernel-driver-lab.config.json and fill in your real values.",
   "type": "object",
   "required": ["vm", "guest", "host"],
   "additionalProperties": true,
