@@ -28,6 +28,18 @@ example/HelloWorld/
   HelloWorld/HelloWorld.vcxproj
 ```
 
+## Component Sources
+
+- `windbg-mcp`: source repository is
+  [Letenz/windbg-mcp](https://github.com/Letenz/windbg-mcp). This harness
+  vendors a known-good `windbg-mcp.exe` and `mcpext.dll` under
+  `skills/windows-drv-harness/windbg-mcp/` so an agent can use the debugger
+  bridge without cloning or building it during a driver test. When replacing
+  these binaries, update the adjacent `.sha256` files too.
+- `vmware-mcp`: source repository is
+  [ZacharyZcR/vmware-mcp](https://github.com/ZacharyZcR/vmware-mcp). It is
+  bundled as the submodule under `skills/windows-drv-harness/vmware-mcp/`.
+
 There is no extra high-level harness MCP server. The AI reads the skill and
 directly uses `windbg-mcp`, `vmware-mcp` or `vmrun.exe`, and bounded
 PowerShell.

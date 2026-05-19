@@ -34,6 +34,18 @@ example/HelloWorld/
   HelloWorld/HelloWorld.vcxproj
 ```
 
+## 组件来源
+
+- `windbg-mcp`：源码仓库是
+  [Letenz/windbg-mcp](https://github.com/Letenz/windbg-mcp)。本 harness
+  仓库会在 `skills/windows-drv-harness/windbg-mcp/` 内置一份已知可用的
+  `windbg-mcp.exe` 和 `mcpext.dll`，这样 AI 测试驱动时不需要临时 clone 或
+  编译 `windbg-mcp`。替换这些二进制时，也要同步更新旁边的 `.sha256`
+  文件。
+- `vmware-mcp`：源码仓库是
+  [ZacharyZcR/vmware-mcp](https://github.com/ZacharyZcR/vmware-mcp)。本仓库把它作为
+  submodule 放在 `skills/windows-drv-harness/vmware-mcp/`。
+
 ## 它解决什么
 
 目标是让 AI 能跑完整的驱动测试闭环：
