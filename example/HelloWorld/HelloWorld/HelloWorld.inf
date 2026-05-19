@@ -1,0 +1,42 @@
+;
+; HelloWorld.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%ManufacturerName%
+DriverVer=
+CatalogFile=HelloWorld.cat
+PnpLockDown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+HelloWorld.sys = 1
+
+[DefaultInstall.NT$ARCH$]
+CopyFiles=HelloWorld_CopyFiles
+
+[DefaultInstall.NT$ARCH$.Services]
+AddService=HelloWorld,0x00000002,HelloWorld_Service_Inst
+
+[HelloWorld_CopyFiles]
+HelloWorld.sys
+
+[HelloWorld_Service_Inst]
+DisplayName    = %ServiceName%
+ServiceType    = 1    ; SERVICE_KERNEL_DRIVER
+StartType      = 3    ; SERVICE_DEMAND_START
+ErrorControl   = 1    ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\HelloWorld.sys
+
+[Strings]
+ManufacturerName="HelloWorld"
+ServiceName="HelloWorld Driver"
+DiskName="HelloWorld Source Disk"

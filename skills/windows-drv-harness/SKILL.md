@@ -1,13 +1,15 @@
 ---
 name: windows-drv-harness
-description: Operate a Windows kernel driver testing lab with VMware Workstation, VirtualKD-Redux, WinDbg, self-developed windbg-mcp, and vmware-mcp. Use when an agent must set up or diagnose the environment, configure VirtualKD autostart, start vmmon64.exe, register MCP servers, deploy a .sys into a VM, load/unload a kernel driver, inspect WinDbg state, analyze a crash, recover a VMware snapshot, or run a build-test-fix loop.
+description: Operate a Windows kernel driver testing lab with VMware Workstation, VirtualKD-Redux, WinDbg/KD dbgeng, self-developed windbg-mcp, and vmware-mcp. Use when an agent must set up or diagnose the environment, configure VirtualKD autostart, start vmmon64.exe, register MCP servers, deploy a .sys into a VM, load/unload a kernel driver, inspect debugger state, analyze a crash, recover a VMware snapshot, or run a build-test-fix loop.
 ---
 
 # Windows Driver Harness
 
 This skill is the operating manual. There is no extra high-level harness MCP
 server. Use `windbg-mcp` for debugger work, `vmware-mcp` or `vmrun.exe` for
-VMware work, and bounded PowerShell for host setup.
+VMware work, and bounded PowerShell for host setup. Keep VirtualKD's automatic
+debugger launch disabled; the agent starts classic GUI `windbg.exe` manually
+after it sees the VirtualKD KD pipe.
 
 Resolve all relative paths below from the directory containing this `SKILL.md`.
 Call that directory `<SKILL_DIR>`.
@@ -23,7 +25,7 @@ agent
        snapshot revert/start, copy files, run guest programs
   -> host PowerShell
        bounded path probing, VirtualKD registry, vmmon64.exe,
-       stale WinDbg cleanup
+       stale KD/WinDbg cleanup
 ```
 
 Expected loop:
@@ -39,23 +41,48 @@ patch code -> repeat
 - The user must provide a VMware snapshot that is already prepared for
   two-machine kernel debugging. A normal Windows snapshot is not valid.
 - For VirtualKD-Redux, `vmmon64.exe` must run before the VM is restored or
-  started. vmmon observes the guest debug event and launches WinDbg.
+  started. vmmon observes the guest debug event and exposes the KD pipe.
+- Unless the user explicitly provides a kernel debugger pipe, use the
+  VirtualKD main KD pipe exposed by vmmon (`\\.\pipe\kd_*`) as WinDbg's
+  `-k com:pipe,port=...` transport. Do not invent a pipe name, use a stale
+  saved pipe, or use `\\.\pipe\windbgmcp` as the kernel debugger transport.
+- Disable VirtualKD's automatic debugger launch (`AutoInvokeDebugger=0`).
+  The agent must launch WinDbg itself after the KD pipe appears. This avoids
+  vmmon racing the agent, spawning duplicate WinDbg instances, or relaunching
+  stale debuggers after snapshot restore.
 - `vmmon64.exe` reads `HKLM\Software\VirtualKD-Redux\Monitor` when it starts.
-  If `DebuggerType` or `CustomDebuggerTemplate` changes, stop vmmon first,
-  edit the registry, then start vmmon again.
-- Treat `vmmon64.exe` as stale unless it was started after the registry was
-  verified in the current session. Restart vmmon during preflight before any
-  snapshot restore/start.
+  If `AutoInvokeDebugger`, `DebuggerType`, or `CustomDebuggerTemplate`
+  changes, stop vmmon first, edit the registry, then start vmmon again.
+- `vmmon64.exe` should have exactly one running instance. During one-time
+  setup or registry changes, stop old vmmon, edit the registry, then start one
+  vmmon. During normal test sessions, if the registry is already correct and
+  exactly one vmmon is running, reuse it. Do not start another vmmon just to
+  be safe.
 - Use `DebuggerType=2` (Custom). Do not use `DebuggerType=3`; WinDbg Preview
-  mode can ignore `CustomDebuggerTemplate` and start WinDbg without
+  mode can ignore `CustomDebuggerTemplate` and start the debugger without
   `mcpext.dll`.
+- Use classic GUI `windbg.exe -b -logo <log> -c ".load ...; !mcpext.start; g"
+  -k com:pipe,port=<kd pipe>,resets=0,reconnect` when launching manually.
+  The `-b` flag is required: without it, WinDbg can attach to the VirtualKD
+  pipe but never reach the first prompt, so the `-c` command chain never
+  starts and `\\.\pipe\windbgmcp` never appears.
+- For visibility, keep the GUI WinDbg window and enable a debugger log with
+  `-logo`. Agents should report both the GUI/log path and `windbg-mcp`
+  structured state.
+- Use a unique WinDbg log path for each launch. A fixed `-logo` file can be
+  held open by an elevated stale WinDbg and cause an "in use" dialog.
+- When launching WinDbg with PowerShell `Start-Process`, build one quoted
+  argument string. Do not pass an `ArgumentList` array for `-c`; semicolons and
+  spaces can lose quoting, causing WinDbg to treat the DLL path as a program
+  and show Win32 error 2.
 - Do not infer debugger state from screenshots, prompts, or window focus. Use
   `windbg-mcp.wm_session`, `windbg-mcp.wm_break_in`, and
   `windbg-mcp.wm_wait_event`.
 - If WinDbg starts but `\\.\pipe\windbgmcp` never appears, the environment is
   not ready. Do not send keystrokes, use window titles, press Ctrl+Break, or
-  launch a replacement WinDbg by hand. Fix registry/vmmon and retry the
-  snapshot sequence once.
+  let vmmon relaunch another debugger. Close the stale WinDbg, ensure there is
+  exactly one vmmon with autostart disabled, and retry the snapshot sequence
+  once.
 - `mcpext.dll` accepts one pipe client at a time. Avoid overlapping direct
   `windbg-mcp` calls.
 - Do not search whole drives, user profiles, download folders, or arbitrary
@@ -135,18 +162,22 @@ Fill in:
 - `flags.baseline_snapshot_created=true` only after the baseline snapshot is
   truly VirtualKD/KDNET ready
 
-4. Configure VirtualKD-Redux registry as Administrator. Stop old vmmon first:
+4. Configure VirtualKD-Redux registry as Administrator. Stop old vmmon first
+   and disable automatic debugger launch:
 
 ```powershell
 Get-Process vmmon64 -ErrorAction SilentlyContinue | Stop-Process -Force
 
-$windbg = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
+$debugger = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
 $dll = (Resolve-Path .\windbg-mcp\mcpext.dll).Path
-$template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpext.start; g`""
+$logDir = Join-Path $env:TEMP "windows-drv-harness"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$log = Join-Path $logDir ("windbg-virtualkd-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
+$template = "`"$debugger`" -logo `"$log`" -b -c `".load $dll; !mcpext.start; g`" -k com:pipe,port=`$(pipename),resets=0,reconnect"
 
 New-Item -Path HKLM:\Software\VirtualKD-Redux\Monitor -Force | Out-Null
 Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name DebuggerType -Type DWord -Value 2
-Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name AutoInvokeDebugger -Type DWord -Value 1
+Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name AutoInvokeDebugger -Type DWord -Value 0
 Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name InitialBreakIn -Type DWord -Value 1
 Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name WaitForOS -Type DWord -Value 1
 Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name CustomDebuggerTemplate -Type String -Value $template
@@ -155,11 +186,18 @@ Set-ItemProperty -Path HKLM:\Software\VirtualKD-Redux\Monitor -Name CustomDebugg
 If the agent is not elevated, stop and ask the user to grant admin rights or
 perform this step manually.
 
-5. Start `vmmon64.exe` before any VM restore/start:
+5. Ensure exactly one `vmmon64.exe` is running before any VM restore/start:
 
 ```powershell
 $vmmon = "<path from config, env, registry, or explicit user input>"
-Start-Process -FilePath $vmmon -WindowStyle Hidden
+$running = @(Get-Process vmmon64 -ErrorAction SilentlyContinue)
+if ($running.Count -eq 0) {
+  Start-Process -FilePath $vmmon -WindowStyle Hidden
+} elseif ($running.Count -eq 1) {
+  Write-Output "Reusing vmmon64.exe PID $($running[0].Id)"
+} else {
+  throw "Multiple vmmon64.exe instances are running; stop duplicates before continuing."
+}
 ```
 
 If bounded probing cannot locate `vmmon64.exe`, ask the user for it and write
@@ -207,8 +245,9 @@ Use this order. Do not recurse or scan drives.
   `WINDOWS_DRV_HARNESS_VMMON64`, `VMMON64_PATH`, VirtualKD registry
   `InstallPath`, then `C:\Program Files\VirtualKD-Redux\vmmon64.exe` and
   `C:\Program Files (x86)\VirtualKD-Redux\vmmon64.exe`.
-- WinDbg: explicit input, Windows Kits debugger default paths. If not found,
-  ask the user.
+- WinDbg/KD: prefer classic `windbg.exe` from the Windows Kits debugger
+  default paths for visible automation. Use `kd.exe` only for headless runs.
+  If neither is found, ask the user.
 
 ## Session Start Sequence
 
@@ -224,60 +263,97 @@ start, stop, or otherwise touch the VM until every item passes.
    not write it into config.
 3. Check that the snapshot flag and debug transport flags match reality. The
    snapshot must already be VirtualKD/KDNET ready.
-4. Verify VirtualKD registry and restart vmmon in the same preflight:
+4. Verify VirtualKD registry and ensure exactly one vmmon in the same preflight.
+   Restart vmmon only when the registry must change. The registry must keep
+   automatic debugger launch disabled:
 
 ```powershell
 $skill = "<absolute SKILL_DIR>"
 $dll = (Resolve-Path (Join-Path $skill "windbg-mcp\mcpext.dll")).Path
-$windbg = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
-$template = "`"$windbg`" -k com:pipe,port=`$(pipename),resets=0,reconnect -c `".load $dll; !mcpext.start; g`""
+$debugger = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe"
+$logDir = Join-Path $env:TEMP "windows-drv-harness"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$log = Join-Path $logDir ("windbg-virtualkd-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
+$template = "`"$debugger`" -logo `"$log`" -b -c `".load $dll; !mcpext.start; g`" -k com:pipe,port=`$(pipename),resets=0,reconnect"
 
 $reg = "HKLM:\Software\VirtualKD-Redux\Monitor"
 $v = Get-ItemProperty -Path $reg -ErrorAction SilentlyContinue
 $needsFix = $null -eq $v -or
   $v.DebuggerType -ne 2 -or
+  $v.AutoInvokeDebugger -ne 0 -or
   [string]::IsNullOrWhiteSpace($v.CustomDebuggerTemplate) -or
+  -not $v.CustomDebuggerTemplate.Contains("windbg.exe") -or
+  -not $v.CustomDebuggerTemplate.Contains("-logo") -or
+  -not $v.CustomDebuggerTemplate.Contains("-b") -or
   -not $v.CustomDebuggerTemplate.Contains($dll) -or
   -not $v.CustomDebuggerTemplate.Contains("!mcpext.start") -or
-  -not $v.CustomDebuggerTemplate.Contains("-c")
+  -not $v.CustomDebuggerTemplate.Contains("-c") -or
+  $v.CustomDebuggerTemplate.Contains("-bonc")
 
-Get-Process vmmon64 -ErrorAction SilentlyContinue | Stop-Process -Force
+$vmmon = "<path from config, env, registry, default path, or explicit user input>"
+$vmmonProcs = @(Get-Process vmmon64 -ErrorAction SilentlyContinue)
+if ($vmmonProcs.Count -gt 1) {
+  throw "Multiple vmmon64.exe instances are running; stop duplicates before continuing."
+}
 
 if ($needsFix) {
+  if ($vmmonProcs.Count -eq 1) {
+    Stop-Process -Id $vmmonProcs[0].Id -Force -ErrorAction Stop
+    Start-Sleep -Seconds 1
+  }
   New-Item -Path $reg -Force | Out-Null
   Set-ItemProperty -Path $reg -Name DebuggerType -Type DWord -Value 2
-  Set-ItemProperty -Path $reg -Name AutoInvokeDebugger -Type DWord -Value 1
+  Set-ItemProperty -Path $reg -Name AutoInvokeDebugger -Type DWord -Value 0
   Set-ItemProperty -Path $reg -Name InitialBreakIn -Type DWord -Value 1
   Set-ItemProperty -Path $reg -Name WaitForOS -Type DWord -Value 1
   Set-ItemProperty -Path $reg -Name CustomDebuggerTemplate -Type String -Value $template
+  Start-Process -FilePath $vmmon -WindowStyle Hidden
+} elseif ($vmmonProcs.Count -eq 0) {
+  Start-Process -FilePath $vmmon -WindowStyle Hidden
+} else {
+  Write-Output "Reusing vmmon64.exe PID $($vmmonProcs[0].Id)"
 }
 
-$vmmon = "<path from config, env, registry, default path, or explicit user input>"
-Start-Process -FilePath $vmmon -WindowStyle Hidden
 Start-Sleep -Seconds 1
-if (-not (Get-Process vmmon64 -ErrorAction SilentlyContinue)) {
-  throw "vmmon64.exe is not running; stop and ask the user for the correct path/admin session."
+$running = @(Get-Process vmmon64 -ErrorAction SilentlyContinue)
+if ($running.Count -ne 1) {
+  throw "Expected exactly one vmmon64.exe instance; found $($running.Count)."
 }
+Write-Output "Debugger log: $log"
 ```
 
-5. Close stale harness-owned WinDbg windows before snapshot restore. First use
-   `windbg-mcp.wm_exit` if a live pipe is reachable; then kill only WinDbg
-   processes whose command line clearly matches the automation:
+5. Close stale harness-owned KD/WinDbg processes before snapshot restore.
+   First use `windbg-mcp.wm_exit` if a live pipe is reachable; then kill only
+   debugger processes whose command line clearly matches the automation:
 
 ```powershell
 Get-CimInstance Win32_Process |
   Where-Object {
-    $_.Name -in @("windbg.exe", "windbgx.exe", "WinDbgX.exe") -and
+    $_.Name -in @("kd.exe", "cdb.exe", "windbg.exe", "windbgx.exe", "WinDbgX.exe") -and
     ($_.CommandLine -match "mcpext\.dll|windbgmcpExt\.dll|!mcpext\.start|!mcpstart|\\\\\.\\pipe\\windbgmcp|com:pipe")
   } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 ```
 
-If WinDbg exists but command line is blank and no `\\.\pipe\windbgmcp` is live,
-stop and ask whether to close that WinDbg. Do not continue into a restore with
-ambiguous stale debugger windows.
+If a debugger process exists but command line is blank and no
+`\\.\pipe\windbgmcp` is live, stop and ask whether to close it. Do not continue
+into a restore with ambiguous stale debugger processes.
 
-6. Restore/start the VM using `vmware-mcp`, or `vmrun.exe` as separate checked
+If `\\.\pipe\windbgmcp` is still live before restore, do not launch a second
+debugger. Use `windbg-mcp.wm_exit` first; if it cannot exit WinDbg because of
+permissions, stop and ask the user for an elevated cleanup.
+
+6. Record existing VirtualKD main KD pipes before restore. Ignore
+   `_virtualkd_svc_` helper pipes; they are not the debugger transport. Unless
+   the user explicitly gave a kernel debugger pipe for this run, the target
+   WinDbg pipe must come from this VirtualKD main-pipe set:
+
+```powershell
+$beforeKdPipes = @([System.IO.Directory]::EnumerateFiles("\\.\pipe\") |
+  Where-Object { $_ -match "\\\\\.\\pipe\\kd_" -and $_ -notmatch "_virtualkd_svc_" })
+```
+
+7. Restore/start the VM using `vmware-mcp`, or `vmrun.exe` as separate checked
    commands. Do not chain stop/revert/start in one long shell command.
 
 ```text
@@ -294,13 +370,88 @@ if ($LASTEXITCODE -ne 0) { throw "snapshot revert failed" }
 if ($LASTEXITCODE -ne 0) { throw "vm start failed" }
 ```
 
-7. Wait up to 120 seconds for `\\.\pipe\windbgmcp`, then call
-   `windbg-mcp.wm_session` until it reports an attached kernel target. If
-   WinDbg exists but the pipe never appears, stop: VirtualKD launched WinDbg
-   without `mcpext.dll` or `!mcpext.start` failed. Close the stale WinDbg,
-   rerun the registry/vmmon preflight, and retry restore/start once.
-8. Use `windbg-mcp.wm_run_cmd(cmd="g")` to let the guest run when guest-side
+8. Wait up to 120 seconds for exactly one new VirtualKD main
+   `\\.\pipe\kd_*` pipe. If there are zero, vmmon did not observe the
+   VirtualKD guest event. Ignore `_virtualkd_svc_` helper pipes. If there are
+   multiple new main KD pipes, ask the user which VirtualKD pipe is the target.
+   Do not fall back to any non-VirtualKD or remembered pipe unless the user
+   explicitly provided it for this run.
+
+```powershell
+$deadline = (Get-Date).AddSeconds(120)
+$kdPipe = $null
+while ((Get-Date) -lt $deadline) {
+  $current = @([System.IO.Directory]::EnumerateFiles("\\.\pipe\") |
+    Where-Object { $_ -match "\\\\\.\\pipe\\kd_" -and $_ -notmatch "_virtualkd_svc_" })
+  $new = @($current | Where-Object { $beforeKdPipes -notcontains $_ })
+  if ($new.Count -eq 1) { $kdPipe = $new[0]; break }
+  if ($new.Count -gt 1) { throw "Multiple new KD pipes; ask the user which one to use: $($new -join ', ')" }
+  Start-Sleep -Seconds 2
+}
+if (-not $kdPipe) { throw "No new VirtualKD KD pipe appeared; do not launch WinDbg." }
+```
+
+9. Launch WinDbg manually against that KD pipe, then wait up to 120 seconds
+   for `\\.\pipe\windbgmcp`:
+
+```powershell
+$existingMcpPipe = [System.IO.Directory]::EnumerateFiles("\\.\pipe\") -contains "\\.\pipe\windbgmcp"
+if ($existingMcpPipe) {
+  throw "windbgmcp pipe already exists before launch; exit the stale debugger first."
+}
+
+$busy = @(Get-CimInstance Win32_Process |
+  Where-Object {
+    $_.Name -in @("kd.exe", "cdb.exe", "windbg.exe", "windbgx.exe", "WinDbgX.exe") -and
+    $_.CommandLine -and
+    $_.CommandLine.Contains($kdPipe)
+  })
+if ($busy.Count -gt 0) {
+  throw "Target KD pipe is already used by debugger PID(s): $($busy.ProcessId -join ', '). Do not launch another WinDbg."
+}
+
+$args = '-logo "{0}" -b -c ".load {1}; !mcpext.start; g" -k "com:pipe,port={2},resets=0,reconnect"' -f $log, $dll, $kdPipe
+Start-Process -FilePath $debugger -ArgumentList $args
+
+$deadline = (Get-Date).AddSeconds(120)
+while ((Get-Date) -lt $deadline) {
+  if ([System.IO.Directory]::EnumerateFiles("\\.\pipe\") -contains "\\.\pipe\windbgmcp") { break }
+  Start-Sleep -Seconds 2
+}
+if (-not ([System.IO.Directory]::EnumerateFiles("\\.\pipe\") -contains "\\.\pipe\windbgmcp")) {
+  throw "WinDbg launched but windbgmcp pipe never appeared; close stale WinDbg and retry once."
+}
+```
+
+10. Call `windbg-mcp.wm_session` until it reports an attached kernel target.
+   If a debugger exists but the pipe never appears, stop: WinDbg did not load
+   `mcpext.dll` or `!mcpext.start` failed. Close the stale debugger, rerun the
+   registry/vmmon preflight, and retry restore/start once.
+   To watch debugger text during the run, use the WinDbg window or tail the
+   debugger log printed by preflight:
+
+```powershell
+Get-Content $log -Wait
+```
+
+11. Use `windbg-mcp.wm_run_cmd(cmd="g")` to let the guest run when guest-side
    work is needed. Use `windbg-mcp.wm_break_in()` before inspection commands.
+
+## WinDbg Occupied Dialogs
+
+If WinDbg shows an "in use", "busy", "occupied", or access-denied dialog during
+launch, assume a stale debugger still owns either the target `\\.\pipe\kd_*`
+transport or the previous log file.
+
+- Do not start another WinDbg.
+- Capture `Get-CimInstance Win32_Process` for debugger/vmmon processes and
+  list `\\.\pipe\kd_*` plus `\\.\pipe\windbgmcp`.
+- Prefer `windbg-mcp.wm_exit` when the MCP pipe is live.
+- If the stale debugger is elevated and cannot be killed, stop and ask the
+  user for an elevated cleanup or an elevated agent session.
+- After cleanup, ensure exactly one `vmmon64.exe` is running, record existing
+  KD pipes again, restore the VirtualKD-ready snapshot, wait for one new main
+  KD pipe, then launch one WinDbg with a fresh unique log path.
 
 ## Normal Driver Load Test
 
@@ -384,6 +535,9 @@ Common bugchecks:
 
 - Do not restore/start the VM before vmmon is running.
 - Do not edit VirtualKD registry while an old vmmon instance remains alive.
+- Do not launch `vmmon64.exe` when one instance is already running and the
+  VirtualKD registry is already correct.
+- Do not continue when multiple `vmmon64.exe` instances are running.
 - Do not use WinDbg Preview `DebuggerType=3` for this automation path.
 - Do not guess VM paths, snapshot names, guest usernames, passwords, or
   unusual tool paths.
@@ -392,5 +546,7 @@ Common bugchecks:
   retry once.
 - Do not silently register MCP servers or skills into the current client.
 - Do not hardcode secrets in generated files.
+- Do not keep the guest stopped in KD break while running `vmrun` guest
+  operations; run `g` before calling guest commands such as `sc.exe`.
 - Do not call `.crash` or inspection commands while the target is running;
   break in first.
