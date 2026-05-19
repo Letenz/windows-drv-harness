@@ -64,8 +64,8 @@ example/HelloWorld/
 ## 快速开始
 
 ```powershell
-git clone --recursive https://github.com/Letenz/driver-harness-mcp.git
-cd driver-harness-mcp
+git clone --recursive https://github.com/Letenz/windows-drv-harness.git
+cd windows-drv-harness
 
 $skill = ".\skills\windows-drv-harness"
 Copy-Item "$skill\windows-drv-harness.config.example.json" "$skill\windows-drv-harness.config.json"
