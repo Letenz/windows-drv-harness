@@ -3,14 +3,16 @@
 
   "_comment": [
     "Copy this file to windows-drv-harness.config.json and fill in real values.",
-    "windows-drv-harness.config.json is gitignored; do not commit VM paths or secrets.",
+    "During environment checks, agents should create/update that local config first.",
+    "windows-drv-harness.config.json is gitignored; it may contain local VM paths and credentials.",
+    "Never commit windows-drv-harness.config.json and always redact secrets in chat output.",
     "Agents may probe explicit input, this config, env vars, registry values,",
     "and fixed default paths only. If a tool is still missing, ask the user."
   ],
 
   "vm": {
-    "vmx_path": "E:\\VMs\\kernel-test\\kernel-test.vmx",
-    "baseline_snapshot": "virtualkd_ready",
+    "vmx_path": "",
+    "baseline_snapshot": "",
     "_comment": [
       "baseline_snapshot must already exist.",
       "It must be taken after guest VirtualKD/KDNET, VMware Tools, debug boot,",
@@ -19,17 +21,22 @@
   },
 
   "guest": {
-    "admin_user": "Administrator",
-    "admin_password": "${env:KERNEL_DRIVER_TEST_GUEST_PASSWORD}",
-    "desktop_path": "C:\\Users\\Administrator\\Desktop",
+    "admin_user": "",
+    "admin_password": "",
+    "desktop_path": "",
     "arch": "x64",
-    "os_version_hint": "win10_19041"
+    "os_version_hint": "win10_19041",
+    "_comment": [
+      "admin_user/admin_password are the guest credentials used by vmrun/vmware-mcp",
+      "for copyFileFromHostToGuest and runProgramInGuest. If the user wants",
+      "persistent local credentials, fill the password here in plaintext."
+    ]
   },
 
   "host": {
     "vmrun_path": "",
     "vmmon64_path": "",
-    "symbols_path": "D:\\symbols",
+    "symbols_path": "",
     "vmnet8_ip": "",
     "_comment": [
       "Leave vmrun_path/vmmon64_path empty only if they are discoverable from",

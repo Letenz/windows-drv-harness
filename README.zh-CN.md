@@ -57,7 +57,9 @@ example/HelloWorld/
 
 关键不在“写更多脚本”，而在把易错时序固定下来：
 
-- 快照必须已经完成 VirtualKD 双机调试配置。
+- baseline 快照必须在 guest 已经开机、VMware Tools 正常、VirtualKD/KDNET
+  已配置、经典 WinDbg 已经成功挂上内核目标并确认双机调试可用之后保存；不要使用从未
+  挂上 WinDbg 双机调试的冷快照或普通系统快照。
 - `vmmon64.exe` 必须在恢复/启动 VM 之前运行。
 - VirtualKD 自动启动 debugger 应关闭，让 agent 在看到新的 `kd_*` 管道后自己启动 GUI `windbg.exe -b`。
 - WinDbg 必须加载 `mcpext.dll` 并执行 `!mcpext.start`，否则 `windbg-mcp` 无法连接。
@@ -69,7 +71,8 @@ example/HelloWorld/
 - VMware Workstation Pro
 - host 和 guest 都配置好 VirtualKD-Redux
 - Windows guest VM 安装 VMware Tools
-- 一个已经能进入 VirtualKD 双机调试状态的 baseline 快照
+- 一个在 guest 已经开机、VMware Tools 正常、VirtualKD/KDNET 已配置、经典 WinDbg
+  已经成功挂上内核目标并确认双机调试可用之后保存的 baseline 快照
 - Python 3.10+，用于 `vmware-mcp`
 - 建议让当前 agent/终端具备管理员权限，方便写 HKLM 注册表和控制 `vmmon64.exe`
 
@@ -81,27 +84,49 @@ cd windows-drv-harness
 
 $skill = ".\skills\windows-drv-harness"
 Copy-Item "$skill\windows-drv-harness.config.example.json" "$skill\windows-drv-harness.config.json"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\detect-mcp.ps1"
 ```
 
-`windows-drv-harness.config.json` 已被 gitignore。把 VMX 路径、快照名、guest 用户名、工具路径等写进去。密码建议用环境变量，例如：
+`windows-drv-harness.config.json` 已被 gitignore。环境检查前先把 VMX 路径、快照名、guest 用户名、guest 密码、工具路径等写进去。这个本地配置可以按你的要求保存明文 guest 密码；agent 在聊天输出里必须打码，并且不要提交这个文件。也可以继续用环境变量，例如：
 
 ```json
 "admin_password": "${env:KERNEL_DRIVER_TEST_GUEST_PASSWORD}"
 ```
 
-如果要使用 `vmware-mcp`：
+如果当前 agent 的可调用工具里已经有 `windbg-mcp` 和 `vmware-mcp`，直接用，不需要跑探测/注册脚本。如果 MCP 工具不可见，再运行 `scripts\install-mcp.ps1` 准备本地工具。它不会把 server 写入客户端 MCP list。用户明确确认后，Codex 可以执行：
 
 ```powershell
-py -3.11 -m venv "$skill\vmware-mcp\.venv"
-& "$skill\vmware-mcp\.venv\Scripts\python.exe" -m pip install -U pip
-& "$skill\vmware-mcp\.venv\Scripts\python.exe" -m pip install -e "$skill\vmware-mcp"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\install-mcp.ps1"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\register-mcp.ps1" -Apply
 ```
+
+如果自动注册失败，就使用 `detect-mcp.ps1` 或 `register-mcp.ps1` 打印出的手工命令。
+
+如果是自写 agent，除非你的 agent 暴露自己的 MCP list/config API，否则脚本不能证明“agent 已经加载成功”。但仍然可以做客户端无关的 MCP stdio 服务端冒烟测试：
+
+```powershell
+py -3 "$skill\scripts\smoke-mcp-server.py" --server windbg
+py -3 "$skill\scripts\smoke-mcp-server.py" --server vmware
+```
+
+通过后，把脚本打印/README 中的 server command 配进你的自写 agent；然后让自写 agent 自己执行 list-tools，确认能看到工具，再进入 VM 操作。
 
 `windbg-mcp.exe` 是 native 程序，可直接从下面路径运行：
 
 ```text
 skills\windows-drv-harness\windbg-mcp\windbg-mcp.exe
 ```
+
+如果当前客户端没有注册好的 MCP 工具，用内置的一次性辅助脚本，不要在仓库根目录临时生成 MCP client：
+
+```powershell
+py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_session
+py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_run_cmd "lm m nt"
+```
+
+## 换电脑运行
+
+skill 目录本身可以迁移，但测试环境不能自动迁移。新电脑上需要安装 VMware Workstation、Windows Kits Debuggers、VirtualKD-Redux 和 Python，并复制或重新创建一个 baseline 快照已在 guest 开机后、WinDbg 双机调试成功挂上后保存的 VM。然后在新机器上重新创建本地 `windows-drv-harness.config.json`，由用户指定那台机器自己的 VMX、快照名、工具路径、符号路径和 guest 凭据。agent 不应该从 `vmrun list`、目录扫描或正在运行的 VM 里替用户选择 VMX/快照。只要这些路径和 baseline 快照有效，同一份 skill 就应该可以继续跑通。
 
 ## 给 AI 的提示词
 
@@ -120,7 +145,8 @@ the windbgmcp pipe. Use the GUI WinDbg window,
 debugger log, and windbg-mcp tools for progress visibility. Do not scan whole
 drives; ask me for the VMX path and any missing paths after bounded probing
 fails. Do not choose a VM from vmrun list without my explicit confirmation.
-Do not store plaintext passwords in config. Ask before registering MCP
+Fill the local gitignored config first, including guest credentials for
+vmrun/vmware-mcp, and redact secrets in chat output. Ask before registering MCP
 servers in my current client.
 ```
 
@@ -136,28 +162,12 @@ revert the snapshot, and patch the smallest code area if the test fails.
 
 `example/HelloWorld` 是一个故意会触发蓝屏的最小 WDM 驱动，用来验证 AI 是否真的能跑完整闭环，而不是只会编译。
 
-推荐让 AI 这样使用这个示例：
-
-```text
-读取 skills/windows-drv-harness/SKILL.md ->
-编译 example/HelloWorld ->
-恢复已经配置好 VirtualKD 的 VMware baseline 快照 ->
-把 HelloWorld.sys 拷贝到 guest ->
-用 sc.exe 加载驱动并触发预期 BSOD ->
-通过 WinDbg MCP 分析 bugcheck 和根因 ->
-修改驱动源码并重新编译 ->
-再次恢复快照并部署修复后的 HelloWorld.sys ->
-确认 sc start 不再蓝屏，sc stop/delete 可以干净卸载 ->
-回滚 VM 到 baseline 快照
-```
-
 可以直接把下面这段任务交给 AI：
 
 ```text
-请使用 skills/windows-drv-harness/SKILL.md，编译 example\HelloWorld，
-把生成的 HelloWorld.sys 放到 VMware guest 里测试。这个示例预期第一次
-加载会蓝屏；请用 WinDbg MCP 分析蓝屏原因，修复驱动源码，重新编译，
-恢复快照后再次测试，直到驱动可以加载和卸载且不再蓝屏。
+请按 skills/windows-drv-harness/SKILL.md 运行 example\HelloWorld。
+先复现预期 BSOD 并用 WinDbg MCP 给出 bugcheck/根因；然后只修最小代码，
+重新编译并恢复 baseline 快照复测，直到 sc start/stop/delete 都成功且最终回滚 VM。
 ```
 
 首轮预期结果：

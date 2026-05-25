@@ -10,6 +10,7 @@ venv/
 uv.lock
 
 # IDE / editor
+.vs/
 .vscode/
 .idea/
 *.swp

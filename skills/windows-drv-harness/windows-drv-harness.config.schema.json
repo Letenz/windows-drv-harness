@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema",
   "$id": "https://github.com/Letenz/windows-drv-harness/blob/main/skills/windows-drv-harness/windows-drv-harness.config.schema.json",
   "title": "windows-drv-harness user configuration",
-  "description": "Per-user configuration consumed by the windows-drv-harness AI skill. Copy windows-drv-harness.config.example.json to windows-drv-harness.config.json and fill in your real values.",
+  "description": "Per-user configuration consumed by the windows-drv-harness AI skill. During environment checks, agents should create or update windows-drv-harness.config.json first, filling confirmed VM paths, tool paths, and guest credentials. The local config is gitignored and must not be committed.",
   "type": "object",
   "required": ["vm", "guest", "host"],
   "additionalProperties": true,
@@ -18,32 +18,29 @@
       "properties": {
         "vmx_path": {
           "type": "string",
-          "minLength": 1,
-          "description": "Absolute path to the guest's .vmx file, provided or explicitly confirmed by the user. Agents must not discover this by drive-wide scanning or silently choosing a vmrun list result. Example: E:\\VMs\\test-vm\\test-vm.vmx",
-          "pattern": "\\.vmx$"
+          "description": "Absolute path to the guest's .vmx file, provided or explicitly confirmed by the user. Empty string means the Config Gate is incomplete and the agent must ask the user. Agents must not discover this by drive-wide scanning or silently choosing a vmrun list result. Example: E:\\VMs\\test-vm\\test-vm.vmx",
+          "pattern": "^$|\\.vmx$"
         },
         "baseline_snapshot": {
           "type": "string",
-          "minLength": 1,
-          "description": "Name of the VMware snapshot the harness reverts to before every test run. MUST already exist."
+          "description": "Name of the VMware snapshot the harness reverts to before every test run. Empty string means the Config Gate is incomplete and the agent must ask the user. MUST already exist. Snapshot names discovered by broad enumeration or copied from prior runs are not confirmed unless the user explicitly confirms them."
         }
       }
     },
 
     "guest": {
       "type": "object",
-      "description": "Credentials and paths inside the guest VM.",
+      "description": "Credentials and paths inside the guest VM. These are the credentials vmrun/vmware-mcp uses for guest operations such as copying files and running sc.exe.",
       "required": ["admin_user", "admin_password"],
       "additionalProperties": true,
       "properties": {
         "admin_user": {
           "type": "string",
-          "minLength": 1,
-          "description": "Guest OS administrator username. vmrun -gu/-gp will use this."
+          "description": "Guest OS administrator username. Empty string means the Config Gate is incomplete and the agent must ask the user. Agents should fill this into windows-drv-harness.config.json during environment checks after the user provides or confirms it. vmrun -gu/-gp will use this."
         },
         "admin_password": {
           "type": "string",
-          "description": "Guest admin password. Supports ${env:VAR_NAME} syntax to reference an environment variable instead of writing the password literally. vmrun does NOT accept empty passwords."
+          "description": "Guest admin password used by vmrun -gp and vmware-mcp. Empty string means the Config Gate is incomplete and the agent must ask the user. Supports either plaintext in the local gitignored config or ${env:VAR_NAME} syntax. Agents should fill this field during environment checks after the user provides or confirms it, redact it in output, and never commit the config. vmrun does NOT accept empty passwords. Treat common guesses such as 123456, 12345678, admin, password, mypass, CHANGE_ME, TODO, or a password equal to the username as unconfirmed unless the user explicitly confirms that exact value."
         },
         "desktop_path": {
           "type": "string",

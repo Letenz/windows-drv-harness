@@ -53,9 +53,11 @@ build driver -> restore VirtualKD-ready snapshot -> deploy .sys ->
 load driver -> collect WinDbg/guest evidence -> unload -> revert -> patch code
 ```
 
-The key is procedural correctness: `vmmon64.exe` must be running before the VM
-is restored, VirtualKD must launch WinDbg with `mcpext.dll`, and the agent must
-use `windbg-mcp` to read debugger state instead of guessing from screenshots.
+The key is procedural correctness: the baseline snapshot must be captured only
+after the guest has booted and classic WinDbg has already attached to the
+kernel target through VirtualKD/KDNET at least once; `vmmon64.exe` must be
+running before the VM is restored; and the agent must use `windbg-mcp` to read
+debugger state instead of guessing from screenshots.
 
 ## Requirements
 
@@ -63,8 +65,10 @@ use `windbg-mcp` to read debugger state instead of guessing from screenshots.
 - VMware Workstation Pro
 - VirtualKD-Redux installed on host and guest
 - Windows guest VM with VMware Tools
-- A baseline VMware snapshot that already enters the VirtualKD two-machine
-  kernel debugging path when restored
+- A baseline VMware snapshot captured after the guest has booted, VMware Tools
+  is running, VirtualKD/KDNET is configured, and classic WinDbg has successfully
+  attached to the kernel target. Do not use a cold/offline snapshot that has
+  never reached a verified two-machine debugging state.
 - Python 3.10+ for `vmware-mcp`
 - Administrator/elevated agent session for HKLM registry writes and reliable
   `vmmon64.exe` control
@@ -77,22 +81,60 @@ cd windows-drv-harness
 
 $skill = ".\skills\windows-drv-harness"
 Copy-Item "$skill\windows-drv-harness.config.example.json" "$skill\windows-drv-harness.config.json"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\detect-mcp.ps1"
 ```
 
 `windows-drv-harness.config.json` is gitignored. Put VM paths, snapshot
-name, guest credentials, and tool paths there. Prefer `${env:VAR_NAME}` for
-passwords.
+name, guest credentials, and tool paths there before environment checks. Local
+plaintext guest passwords are supported when you want a self-contained config;
+agents should redact secrets in chat output and never commit this file.
 
-Install `vmware-mcp` if you want MCP control of VMware:
+If the current agent already shows `windbg-mcp` and `vmware-mcp` in its
+callable tools, use them directly and skip the detection/registration scripts.
+If MCP tools are missing, run `scripts\install-mcp.ps1` to prepare local
+tooling. It does not add servers to a client MCP list. After explicit user
+confirmation, Codex users can run:
 
 ```powershell
-py -3.11 -m venv "$skill\vmware-mcp\.venv"
-& "$skill\vmware-mcp\.venv\Scripts\python.exe" -m pip install -U pip
-& "$skill\vmware-mcp\.venv\Scripts\python.exe" -m pip install -e "$skill\vmware-mcp"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\install-mcp.ps1"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\register-mcp.ps1" -Apply
 ```
+
+If registration fails, use the manual commands printed by `detect-mcp.ps1` or
+`register-mcp.ps1`.
+
+For a custom agent, the scripts cannot prove that your agent loaded the MCP
+server unless your agent exposes its own list/config API. They can still
+validate the server side with a client-independent MCP stdio smoke test:
+
+```powershell
+py -3 "$skill\scripts\smoke-mcp-server.py" --server windbg
+py -3 "$skill\scripts\smoke-mcp-server.py" --server vmware
+```
+
+Then add the printed command paths to your custom agent's MCP configuration
+and have the agent list tools before any VM operation.
 
 `windbg-mcp.exe` is native and runs directly from
 `skills\windows-drv-harness\windbg-mcp\windbg-mcp.exe`.
+
+For shell-only clients, use the bundled one-shot helper instead of creating a
+temporary MCP client in the repo root:
+
+```powershell
+py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_session
+py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_run_cmd "lm m nt"
+```
+
+## Moving To Another Host
+
+The skill folder is portable, but the lab state is not. On a new computer you
+must install VMware Workstation, Windows Kits Debuggers, VirtualKD-Redux, and
+Python, copy or recreate a VM whose baseline snapshot was saved after boot and
+after a verified WinDbg two-machine debugging attach, then create a new local
+`windows-drv-harness.config.json` with that machine's VMX, snapshot, tool
+paths, symbols path, and guest credentials. If those paths and the prepared
+snapshot are valid, the same skill should run there too.
 
 ## Prompt Examples
 
@@ -111,8 +153,9 @@ the windbgmcp pipe. Use the GUI WinDbg window,
 debugger log, and windbg-mcp tools for progress visibility. Do not scan whole
 drives; ask me for the VMX path and any missing paths after
 bounded probing fails. Do not choose a VM from vmrun list without my explicit
-confirmation. Do not store plaintext passwords in config. Ask before
-registering MCP servers in my current client.
+confirmation. Fill the local gitignored config first, including guest
+credentials for vmrun/vmware-mcp, and redact secrets in chat output. Ask
+before registering MCP servers in my current client.
 ```
 
 For a driver test:
@@ -130,17 +173,14 @@ whether an AI agent can run the whole harness loop, not just build a driver.
 The original local test project was misspelled `HelloWord`; this repository
 uses the corrected `HelloWorld` name throughout the example.
 
-The intended demo flow is:
+Use this task prompt:
 
 ```text
-ask the agent to build example/HelloWorld ->
-agent restores the VirtualKD-ready VMware snapshot ->
-agent copies HelloWorld.sys into the guest ->
-agent loads it with sc.exe and observes the expected BSOD ->
-agent uses WinDbg MCP to analyze the bugcheck/root cause ->
-agent patches the driver source and rebuilds ->
-agent restores the snapshot again and retests the fixed .sys ->
-agent verifies the driver no longer BSODs and can unload cleanly
+Run example\HelloWorld according to skills/windows-drv-harness/SKILL.md.
+First reproduce the expected BSOD and report the WinDbg MCP bugcheck/root
+cause. Then make the smallest source fix, rebuild, restore the baseline
+snapshot, retest, and finish only after sc start/stop/delete succeed and the VM
+is reverted.
 ```
 
 The seeded bug is a `NULL` write in `DriverEntry`. A correct first test should
