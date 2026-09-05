@@ -1,113 +1,101 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
   "$id": "https://github.com/Letenz/windows-drv-harness/blob/main/skills/windows-drv-harness/windows-drv-harness.config.schema.json",
-  "title": "windows-drv-harness user configuration",
-  "description": "Per-user configuration consumed by the windows-drv-harness AI skill. During environment checks, agents should create or update windows-drv-harness.config.json first, filling confirmed VM paths, tool paths, and guest credentials. The local config is gitignored and must not be committed.",
+  "title": "windows-drv-harness user configuration v2",
+  "description": "Machine-local multi-target configuration. The active file belongs under LOCALAPPDATA, not inside the installed skill.",
   "type": "object",
-  "required": ["vm", "guest", "host"],
+  "required": ["version", "host", "targets"],
   "additionalProperties": true,
-
   "properties": {
     "$schema": { "type": "string" },
-
-    "vm": {
+    "version": { "const": 2 },
+    "default_target": { "type": "string", "minLength": 1 },
+    "_comment": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "host": {
       "type": "object",
-      "description": "The VMware Workstation guest VM this harness controls.",
-      "required": ["vmx_path", "baseline_snapshot"],
+      "additionalProperties": true,
+      "properties": {
+        "vmrun_path": { "type": "string" },
+        "vmmon64_path": { "type": "string" },
+        "windbg_path": { "type": "string" },
+        "msbuild_path": { "type": "string" },
+        "symbols_path": { "type": "string" },
+        "_comment": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        }
+      }
+    },
+    "targets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z0-9._-]+$": { "$ref": "#/definitions/target" }
+      }
+    }
+  },
+  "definitions": {
+    "target": {
+      "type": "object",
+      "required": ["vmx_path", "baseline_snapshot", "kd_pipe", "mcp_pipe", "guest"],
       "additionalProperties": true,
       "properties": {
         "vmx_path": {
           "type": "string",
-          "description": "Absolute path to the guest's .vmx file, provided or explicitly confirmed by the user. Empty string means the Config Gate is incomplete and the agent must ask the user. Agents must not discover this by drive-wide scanning or silently choosing a vmrun list result. Example: E:\\VMs\\test-vm\\test-vm.vmx",
+          "description": "Absolute path explicitly supplied or confirmed by the user.",
           "pattern": "^$|\\.vmx$"
         },
         "baseline_snapshot": {
           "type": "string",
-          "description": "Name of the VMware snapshot the harness reverts to before every test run. Empty string means the Config Gate is incomplete and the agent must ask the user. MUST already exist. Snapshot names discovered by broad enumeration or copied from prior runs are not confirmed unless the user explicitly confirms them."
-        }
-      }
-    },
-
-    "guest": {
-      "type": "object",
-      "description": "Credentials and paths inside the guest VM. These are the credentials vmrun/vmware-mcp uses for guest operations such as copying files and running sc.exe.",
-      "required": ["admin_user", "admin_password"],
-      "additionalProperties": true,
-      "properties": {
-        "admin_user": {
+          "description": "Snapshot saved after boot and a verified WinDbg two-machine attach."
+        },
+        "kd_pipe": {
           "type": "string",
-          "description": "Guest OS administrator username. Empty string means the Config Gate is incomplete and the agent must ask the user. Agents should fill this into windows-drv-harness.config.json during environment checks after the user provides or confirms it. vmrun -gu/-gp will use this."
+          "description": "VirtualKD main pipe explicitly bound to this VM, for example kd_win10_lab.",
+          "pattern": "^$|^[A-Za-z0-9._-]{1,240}$"
         },
-        "admin_password": {
+        "mcp_pipe": {
           "type": "string",
-          "description": "Guest admin password used by vmrun -gp and vmware-mcp. Empty string means the Config Gate is incomplete and the agent must ask the user. Supports either plaintext in the local gitignored config or ${env:VAR_NAME} syntax. Agents should fill this field during environment checks after the user provides or confirms it, redact it in output, and never commit the config. vmrun does NOT accept empty passwords. Treat common guesses such as 123456, 12345678, admin, password, mypass, CHANGE_ME, TODO, or a password equal to the username as unconfirmed unless the user explicitly confirms that exact value."
+          "description": "Unique windbg-mcp v2 endpoint for this target.",
+          "pattern": "^[A-Za-z0-9._-]{1,240}$"
         },
-        "desktop_path": {
-          "type": "string",
-          "description": "Writable directory inside the guest for staging driver binaries.",
-          "default": "C:\\Users\\Administrator\\Desktop"
+        "guest": {
+          "type": "object",
+          "required": ["admin_user", "admin_password", "deploy_dir"],
+          "additionalProperties": true,
+          "properties": {
+            "admin_user": { "type": "string" },
+            "admin_password": {
+              "type": "string",
+              "description": "Local plaintext or ${env:VAR_NAME}. It is never returned by harness tools."
+            },
+            "deploy_dir": { "type": "string" },
+            "arch": { "type": "string", "enum": ["x64", "x86", "arm64"] }
+          }
         },
-        "arch": {
-          "type": "string",
-          "enum": ["x64", "arm64", "x86"],
-          "description": "Guest CPU architecture. Most kernel debugging work happens on x64.",
-          "default": "x64"
+        "flags": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "baseline_debugger_attached": {
+              "type": "boolean",
+              "description": "True only when the baseline was saved after WinDbg attached successfully."
+            }
+          }
         },
-        "os_version_hint": {
-          "type": "string",
-          "description": "Optional hint for skills to pick the right offsets/patterns. Examples: win10_19041, win11_22631."
-        }
-      }
-    },
-
-    "host": {
-      "type": "object",
-      "description": "Tool paths on the host. Empty strings mean 'let the AI probe config/env/registry/default paths and fill in'. The AI should not scan whole drives; if bounded probing fails, it should ask the user.",
-      "additionalProperties": true,
-      "properties": {
-        "vmrun_path": {
-          "type": "string",
-          "description": "Absolute path to vmrun.exe. Empty string = let AI probe env vars, VMware registry keys, and default install locations; no drive-wide scans.",
-          "default": ""
-        },
-        "vmmon64_path": {
-          "type": "string",
-          "description": "Absolute path to VirtualKD-Redux's vmmon64.exe. Empty string = let AI probe env vars, registry values, and fixed default install locations only; if probing fails, ask the user for the path. vmmon64.exe must be running before VirtualKD snapshot restore/start. Starting/restarting vmmon64.exe and writing HKLM work best from an elevated/admin agent session.",
-          "default": ""
-        },
-        "vmnet8_ip": {
-          "type": "string",
-          "description": "Host IP on VMware NAT network (VMnet8). Only needed for native KDNET, not for VirtualKD-Redux setups.",
-          "default": ""
-        },
-        "symbols_path": {
-          "type": "string",
-          "description": "Local directory used as WinDbg's symbol cache.",
-          "default": "D:\\symbols"
-        }
-      }
-    },
-
-    "flags": {
-      "type": "object",
-      "description": "Boolean hints telling the AI which setup steps have already been completed. Set them to true after you've done each one so the AI doesn't nag you.",
-      "additionalProperties": true,
-      "properties": {
-        "guest_testsigning_enabled": {
-          "type": "boolean",
-          "description": "True once `bcdedit /set testsigning on` has been run inside the guest and it rebooted."
-        },
-        "guest_kdnet_configured": {
-          "type": "boolean",
-          "description": "True once native KDNET has been set up inside the guest."
-        },
-        "guest_vkd_installed": {
-          "type": "boolean",
-          "description": "True once VirtualKD-Redux's guest driver has been installed in the guest."
-        },
-        "baseline_snapshot_created": {
-          "type": "boolean",
-          "description": "True once you've taken the baseline snapshot named `vm.baseline_snapshot`."
+        "_comment": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
         }
       }
     }

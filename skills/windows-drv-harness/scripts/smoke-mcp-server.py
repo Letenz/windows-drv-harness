@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Client-independent MCP stdio smoke test.
-
-This validates that a command launches, speaks MCP JSON-RPC over stdio, and
-returns tools/list. It does not prove that any particular agent has registered
-the server.
-"""
+"""Protocol smoke test for bundled stdio MCP servers."""
 
 from __future__ import annotations
 
@@ -12,33 +7,48 @@ import argparse
 import json
 import subprocess
 import sys
-import time
+import threading
 from pathlib import Path
 
 
-def read_json_line(proc: subprocess.Popen[str], timeout: float) -> dict:
-    deadline = time.time() + timeout
-    line = ""
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            break
-        line = proc.stdout.readline() if proc.stdout else ""
-        if line:
-            return json.loads(line)
-        time.sleep(0.05)
-    stderr = proc.stderr.read() if proc.stderr else ""
-    raise RuntimeError(f"no JSON response from MCP server. stderr={stderr!r}")
+def read_line(process: subprocess.Popen[str], timeout: float) -> str:
+    result: list[str] = []
+
+    def reader() -> None:
+        result.append(process.stdout.readline() if process.stdout else "")
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive() or not result or not result[0]:
+        raise RuntimeError("MCP server returned no JSON line")
+    return result[0]
 
 
-def send(proc: subprocess.Popen[str], payload: dict) -> None:
-    if not proc.stdin:
-        raise RuntimeError("server stdin is closed")
-    proc.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
-    proc.stdin.flush()
+def send(process: subprocess.Popen[str], payload: dict) -> None:
+    assert process.stdin
+    process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    process.stdin.flush()
+
+
+def command_for(server: str, pipe: str | None) -> list[str]:
+    skill = Path(__file__).resolve().parents[1]
+    if server == "harness":
+        return [sys.executable, str(skill / "scripts" / "harness_mcp.py")]
+    if server == "windbg":
+        native = skill / "windbg-mcp" / "windbg-mcp-v2.exe"
+        if not native.is_file():
+            native = skill / "windbg-mcp" / "windbg-mcp.exe"
+        command = [str(native)]
+        if pipe:
+            command += ["--pipe", pipe]
+        return command
+    executable = skill / "vmware-mcp" / ".venv" / "Scripts" / "vmware-mcp.exe"
+    return [str(executable)]
 
 
 def smoke(command: list[str], timeout: float) -> dict:
-    proc = subprocess.Popen(
+    process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -50,7 +60,7 @@ def smoke(command: list[str], timeout: float) -> dict:
     )
     try:
         send(
-            proc,
+            process,
             {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -58,62 +68,39 @@ def smoke(command: list[str], timeout: float) -> dict:
                 "params": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "mcp-smoke-test", "version": "1.0"},
+                    "clientInfo": {"name": "mcp-smoke", "version": "2.0.0"},
                 },
             },
         )
-        initialize = read_json_line(proc, timeout)
-        send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})
-        send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        tools = read_json_line(proc, timeout)
-        tool_names = [
-            item.get("name", "")
-            for item in tools.get("result", {}).get("tools", [])
-            if isinstance(item, dict)
-        ]
+        initialize = json.loads(read_line(process, timeout))
+        send(process, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        send(process, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools = json.loads(read_line(process, timeout))
+        names = [item.get("name") for item in tools.get("result", {}).get("tools", [])]
         return {
-            "ok": True,
+            "ok": bool(initialize.get("result")) and bool(names),
             "command": command,
-            "initialize_ok": "result" in initialize,
-            "tool_count": len(tool_names),
-            "tool_names": tool_names,
+            "server": initialize.get("result", {}).get("serverInfo", {}),
+            "tool_count": len(names),
+            "tools": names,
         }
     finally:
-        proc.terminate()
+        process.terminate()
         try:
-            proc.wait(timeout=3)
+            process.wait(timeout=3)
         except subprocess.TimeoutExpired:
-            proc.kill()
-
-
-def default_command(name: str) -> list[str]:
-    skill_dir = Path(__file__).resolve().parents[1]
-    if name == "windbg":
-        return [str(skill_dir / "windbg-mcp" / "windbg-mcp.exe")]
-    if name == "vmware":
-        return [str(skill_dir / "vmware-mcp" / ".venv" / "Scripts" / "vmware-mcp.exe")]
-    raise ValueError(f"unknown default server: {name}")
+            process.kill()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Smoke-test an MCP stdio server.")
-    parser.add_argument("--server", choices=["windbg", "vmware"], help="Use a bundled server command.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--server", choices=("harness", "windbg", "vmware"), required=True)
+    parser.add_argument("--pipe", help="Optional windbg-mcp endpoint")
     parser.add_argument("--timeout", type=float, default=10.0)
-    parser.add_argument("command", nargs=argparse.REMAINDER, help="Custom command after --")
     ns = parser.parse_args()
-
-    if ns.server:
-        command = default_command(ns.server)
-    else:
-        command = ns.command
-        if command and command[0] == "--":
-            command = command[1:]
-    if not command:
-        parser.error("provide --server or a command after --")
-
-    result = smoke(command, ns.timeout)
+    result = smoke(command_for(ns.server, ns.pipe), ns.timeout)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
+    return 0 if result["ok"] else 2
 
 
 if __name__ == "__main__":

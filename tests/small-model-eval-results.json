@@ -1,0 +1,47 @@
+{
+  "date": "2026-09-05",
+  "harness_version": "2.0.0",
+  "windbg_mcp_version": "2.0.0",
+  "environment": "configured local VMware + VirtualKD target; real driver build, load, crash analysis, unload, and snapshot reset",
+  "acceptance": {
+    "first_run": "driver_test(expect=crash) returns an observed WinDbg bugcheck",
+    "repair": "model edits the isolated source only after crash evidence",
+    "second_run": "driver_test(expect=success) proves module load/unload and cleanup.status=reverted"
+  },
+  "models": [
+    {
+      "name": "glm-5.3-flash",
+      "passed": true,
+      "turns": 7,
+      "tool_sequence": [
+        "lab_doctor",
+        "read_file",
+        "driver_build",
+        "driver_test(expect=crash)",
+        "replace_text",
+        "driver_build",
+        "driver_test(expect=success)",
+        "finish"
+      ],
+      "crash_test_seconds": 54.07,
+      "success_test_seconds": 32.7
+    },
+    {
+      "name": "qwen3.8-flash",
+      "passed": true,
+      "turns": 7,
+      "tool_sequence": [
+        "lab_doctor",
+        "read_file",
+        "driver_build",
+        "driver_test(expect=crash)",
+        "replace_text",
+        "driver_build",
+        "driver_test(expect=success)",
+        "finish"
+      ],
+      "crash_test_seconds": 55.01,
+      "success_test_seconds": 32.4
+    }
+  ]
+}

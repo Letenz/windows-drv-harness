@@ -1,97 +1,98 @@
 param(
   [ValidateSet("codex")]
   [string]$Client = "codex",
-
   [switch]$Apply,
-  [switch]$Force
+  [switch]$Force,
+  [switch]$RemoveLegacyRaw
 )
 
 $ErrorActionPreference = "Stop"
-
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$skillDir = Split-Path -Parent $scriptDir
-$windbgMcp = Join-Path $skillDir "windbg-mcp\windbg-mcp.exe"
-$vmwareMcp = Join-Path $skillDir "vmware-mcp\.venv\Scripts\vmware-mcp.exe"
+$server = Join-Path $scriptDir "harness_mcp.py"
 
-function Invoke-Checked {
-  param([string]$FilePath, [string[]]$Arguments)
-  & $FilePath @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "Command failed: $FilePath $($Arguments -join ' ')"
+function Get-HealthyPython {
+  $candidates = @(
+    [pscustomobject]@{ File = "py"; Prefix = @("-3.11") },
+    [pscustomobject]@{ File = "py"; Prefix = @("-3.12") },
+    [pscustomobject]@{ File = "py"; Prefix = @("-3") },
+    [pscustomobject]@{ File = "python"; Prefix = @() }
+  )
+  foreach ($candidate in $candidates) {
+    try {
+      & $candidate.File @($candidate.Prefix) -c "import json,sys; assert sys.version_info >= (3,10)" *> $null
+      if ($LASTEXITCODE -eq 0) {
+        $command = Get-Command $candidate.File -ErrorAction Stop
+        return [pscustomobject]@{ File = $command.Source; Prefix = @($candidate.Prefix) }
+      }
+    } catch {
+    }
   }
+  throw "No healthy Python 3.10+ runtime was found."
 }
 
-function Get-CodexListText {
-  $cmd = Get-Command codex -ErrorAction SilentlyContinue
-  if (-not $cmd) { return "" }
-  $text = & $cmd.Source mcp list 2>&1 | Out-String
-  return $text
+if (-not (Test-Path -LiteralPath $server -PathType Leaf)) {
+  throw "Missing harness MCP server: $server"
 }
-
-function Test-ServerRegistered {
-  param([string]$ListText, [string]$Name)
-  return ($ListText -match "(?m)^\s*$([regex]::Escape($Name))\s")
-}
-
-if (-not (Test-Path -LiteralPath $windbgMcp)) {
-  throw "Missing windbg MCP binary: $windbgMcp. Run install-mcp.ps1 first."
-}
-if (-not (Test-Path -LiteralPath $vmwareMcp)) {
-  throw "Missing vmware MCP entrypoint: $vmwareMcp. Run install-mcp.ps1 first."
-}
-
 $codex = Get-Command codex -ErrorAction SilentlyContinue
-if (-not $codex) {
-  throw "Codex CLI was not found. Manual registration is required."
+if (-not $codex) { throw "Codex CLI was not found; register the printed command manually." }
+$python = Get-HealthyPython
+$name = "windows-drv-harness"
+$serverArgs = @($python.Prefix) + @($server)
+$manualParts = @("codex", "mcp", "add", $name, "--", ('"' + $python.File + '"')) + @($serverArgs | ForEach-Object { '"' + $_ + '"' })
+$manual = $manualParts -join " "
+
+$savedPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$before = & $codex.Source mcp list 2>&1 | Out-String
+$listExitCode = $LASTEXITCODE
+$ErrorActionPreference = $savedPreference
+if ($listExitCode -ne 0) {
+  throw "Codex MCP list failed. Repair the Codex CLI configuration first: $($before.Trim())"
 }
-
-$commands = @(
-  [pscustomobject]@{
-    name = "windows-drv-windbg-mcp"
-    args = @("mcp", "add", "windows-drv-windbg-mcp", "--", $windbgMcp)
-    manual = "codex mcp add windows-drv-windbg-mcp -- `"$windbgMcp`""
-  },
-  [pscustomobject]@{
-    name = "windows-drv-vmware-mcp"
-    args = @("mcp", "add", "windows-drv-vmware-mcp", "--", $vmwareMcp)
-    manual = "codex mcp add windows-drv-vmware-mcp -- `"$vmwareMcp`""
-  }
-)
-
+$exists = $before -match "(?m)^\s*$([regex]::Escape($name))\s"
 if (-not $Apply) {
   [pscustomobject]@{
+    ok = $true
     applied = $false
-    note = "Dry run only. Rerun with -Apply after user confirmation."
-    manual_commands = $commands.manual
+    registered = $exists
+    manual_command = $manual
+    next_action = "Rerun with -Apply only when registration is intended."
   } | ConvertTo-Json -Depth 4
   exit 0
 }
 
-$before = Get-CodexListText
-$changes = @()
-foreach ($entry in $commands) {
-  $exists = Test-ServerRegistered $before $entry.name
-  if ($exists -and -not $Force) {
-    $changes += [pscustomobject]@{
-      name = $entry.name
-      action = "skipped"
-      reason = "already registered"
+if ($exists -and $Force) {
+  & $codex.Source mcp remove $name
+  if ($LASTEXITCODE -ne 0) { throw "Could not remove existing $name registration." }
+  $exists = $false
+}
+if (-not $exists) {
+  $arguments = @("mcp", "add", $name, "--", $python.File) + $serverArgs
+  & $codex.Source @arguments
+  if ($LASTEXITCODE -ne 0) { throw "Could not register $name." }
+}
+$removedLegacy = @()
+if ($RemoveLegacyRaw) {
+  foreach ($legacyName in @("windbg-mcp", "vmware")) {
+    if ($before -match "(?m)^\s*$([regex]::Escape($legacyName))\s") {
+      & $codex.Source mcp remove $legacyName
+      if ($LASTEXITCODE -ne 0) { throw "Could not remove legacy MCP registration: $legacyName" }
+      $removedLegacy += $legacyName
     }
-    continue
-  }
-  if ($exists -and $Force) {
-    Invoke-Checked $codex.Source @("mcp", "remove", $entry.name)
-  }
-  Invoke-Checked $codex.Source $entry.args
-  $changes += [pscustomobject]@{
-    name = $entry.name
-    action = "added"
   }
 }
-
-$after = Get-CodexListText
+$savedPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$after = & $codex.Source mcp list 2>&1 | Out-String
+$afterExitCode = $LASTEXITCODE
+$ErrorActionPreference = $savedPreference
+if ($afterExitCode -ne 0) { throw "Codex MCP list failed after registration." }
 [pscustomobject]@{
+  ok = $true
   applied = $true
-  changes = $changes
-  list_preview = if ($after.Length -gt 1200) { $after.Substring(0, 1200) } else { $after }
-} | ConvertTo-Json -Depth 6
+  action = $(if ($exists) { "kept" } else { "added" })
+  registered = ($after -match "(?m)^\s*$([regex]::Escape($name))\s")
+  server_name = $name
+  removed_legacy_raw_servers = $removedLegacy
+  next_action = "Restart or reload the MCP client if the new tools are not visible yet."
+} | ConvertTo-Json -Depth 4

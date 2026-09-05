@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "source": "https://github.com/Letenz/windbg-mcp.git",
+  "tag": "v2.0.0",
+  "commit": "26c40e2a4f7d24575916503d436a1ff2720db6d5",
+  "configuration": "Release",
+  "logging": false,
+  "artifacts": {
+    "windbg-mcp.exe": "0D681DF2DACE98B4EE700E2166ACA5B1857E4248F398C73F4E1156DFEA6749AA",
+    "mcpext.dll": "FC802A468E530587B1F6C86C3048A464187C108AFEB8087FC9F0929476E7DA76"
+  }
+}

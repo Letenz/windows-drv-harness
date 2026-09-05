@@ -1,92 +1,82 @@
-$ErrorActionPreference = "Stop"
+param(
+  [switch]$InstallRawVmwareMcp
+)
 
+$ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $skillDir = Split-Path -Parent $scriptDir
 $repoRoot = (Resolve-Path (Join-Path $skillDir "..\..")).Path
-$vmwareMcpDir = Join-Path $skillDir "vmware-mcp"
-$vmwarePyproject = Join-Path $vmwareMcpDir "pyproject.toml"
-$venvPython = Join-Path $vmwareMcpDir ".venv\Scripts\python.exe"
+$harnessMcp = Join-Path $scriptDir "harness_mcp.py"
 $windbgMcp = Join-Path $skillDir "windbg-mcp\windbg-mcp.exe"
 $mcpext = Join-Path $skillDir "windbg-mcp\mcpext.dll"
+$manifestPath = Join-Path $skillDir "windbg-mcp\build-manifest.json"
 
-function Invoke-Checked {
-  param([string]$FilePath, [string[]]$Arguments)
-  & $FilePath @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "Command failed: $FilePath $($Arguments -join ' ')"
-  }
-}
-
-function Get-PythonLauncher {
+function Get-HealthyPython {
   $candidates = @(
-    @("py", "-3.11"),
-    @("py", "-3.12"),
-    @("py", "-3")
+    [pscustomobject]@{ File = "py"; Prefix = @("-3.11") },
+    [pscustomobject]@{ File = "py"; Prefix = @("-3.12") },
+    [pscustomobject]@{ File = "py"; Prefix = @("-3") },
+    [pscustomobject]@{ File = "python"; Prefix = @() }
   )
-
   foreach ($candidate in $candidates) {
-    $exe = $candidate[0]
-    $versionArg = $candidate[1]
     try {
-      & $exe $versionArg --version *> $null
+      & $candidate.File @($candidate.Prefix) -c "import json,sys; assert sys.version_info >= (3,10)" *> $null
       if ($LASTEXITCODE -eq 0) {
-        return $candidate
+        $command = Get-Command $candidate.File -ErrorAction Stop
+        return [pscustomobject]@{ File = $command.Source; Prefix = @($candidate.Prefix) }
       }
     } catch {
-      continue
     }
   }
+  throw "No healthy Python 3.10+ runtime was found. A version-only check is insufficient; the standard library must import successfully."
+}
 
-  try {
-    & python --version *> $null
-    if ($LASTEXITCODE -eq 0) {
-      return @("python")
-    }
-  } catch {
+foreach ($required in @($harnessMcp, $windbgMcp, $mcpext, $manifestPath)) {
+  if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+    throw "Missing bundled harness component: $required"
   }
-
-  throw "Python 3.10+ was not found. Install Python, then rerun install-mcp.ps1."
 }
 
-if (-not (Test-Path -LiteralPath $windbgMcp)) {
-  throw "Missing bundled windbg-mcp.exe: $windbgMcp"
-}
-if (-not (Test-Path -LiteralPath $mcpext)) {
-  throw "Missing bundled mcpext.dll: $mcpext"
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$actualExeHash = (Get-FileHash -LiteralPath $windbgMcp -Algorithm SHA256).Hash
+$actualDllHash = (Get-FileHash -LiteralPath $mcpext -Algorithm SHA256).Hash
+if ($actualExeHash -ne $manifest.artifacts.'windbg-mcp.exe' -or $actualDllHash -ne $manifest.artifacts.'mcpext.dll') {
+  throw "Bundled windbg-mcp artifact hash verification failed."
 }
 
-if (-not (Test-Path -LiteralPath $vmwarePyproject)) {
-  $git = Get-Command git -ErrorAction SilentlyContinue
-  if (-not $git) {
-    throw "vmware-mcp submodule is missing and git was not found."
+$python = Get-HealthyPython
+& $python.File @($python.Prefix) -m py_compile (Join-Path $scriptDir "harness_core.py") $harnessMcp
+if ($LASTEXITCODE -ne 0) { throw "Harness MCP Python validation failed." }
+
+$vmwareMcpInstalled = $false
+if ($InstallRawVmwareMcp) {
+  $vmwareMcpDir = Join-Path $skillDir "vmware-mcp"
+  $vmwarePyproject = Join-Path $vmwareMcpDir "pyproject.toml"
+  if (-not (Test-Path -LiteralPath $vmwarePyproject)) {
+    & git -C $repoRoot submodule update --init --recursive -- "skills/windows-drv-harness/vmware-mcp"
+    if ($LASTEXITCODE -ne 0) { throw "Could not initialize vmware-mcp submodule." }
   }
-  Invoke-Checked $git.Source @(
-    "-C", $repoRoot,
-    "submodule", "update", "--init", "--recursive", "--",
-    "skills/windows-drv-harness/vmware-mcp"
-  )
-}
-
-$python = Get-PythonLauncher
-if (-not (Test-Path -LiteralPath $venvPython)) {
-  $venvArgs = @()
-  if ($python.Length -gt 1) {
-    $venvArgs += $python[1..($python.Length - 1)]
+  $venvPython = Join-Path $vmwareMcpDir ".venv\Scripts\python.exe"
+  if (-not (Test-Path -LiteralPath $venvPython)) {
+    & $python.File @($python.Prefix) -m venv (Join-Path $vmwareMcpDir ".venv")
+    if ($LASTEXITCODE -ne 0) { throw "Could not create vmware-mcp virtual environment." }
   }
-  $venvArgs += @("-m", "venv", (Join-Path $vmwareMcpDir ".venv"))
-  Invoke-Checked $python[0] $venvArgs
+  & $venvPython -m pip install -e $vmwareMcpDir
+  if ($LASTEXITCODE -ne 0) { throw "Could not install vmware-mcp." }
+  $vmwareMcpInstalled = $true
 }
-
-Invoke-Checked $venvPython @("-m", "pip", "install", "-U", "pip")
-Invoke-Checked $venvPython @("-m", "pip", "install", "-e", $vmwareMcpDir)
 
 [pscustomobject]@{
-  skill_dir = $skillDir
+  ok = $true
+  status = "local_mcp_ready"
   registered_in_client = $false
-  note = "Local MCP tooling is prepared only. Run detect-mcp.ps1, then register-mcp.ps1 -Apply after user confirmation to add servers to Codex MCP list."
-  windbg_mcp_exists = Test-Path -LiteralPath $windbgMcp
-  mcpext_exists = Test-Path -LiteralPath $mcpext
-  vmware_mcp_dir = $vmwareMcpDir
-  vmware_mcp_venv_python = $venvPython
-  vmware_mcp_installed = Test-Path -LiteralPath $venvPython
-} | ConvertTo-Json -Depth 4
+  python = $python.File
+  python_args = $python.Prefix
+  harness_mcp = $harnessMcp
+  windbg_mcp = $windbgMcp
+  mcpext = $mcpext
+  windbg_mcp_version = $manifest.version
+  windbg_mcp_source_commit = $manifest.commit
+  raw_vmware_mcp_installed = $vmwareMcpInstalled
+  next_action = "Run detect-mcp.ps1, then register-mcp.ps1 -Apply if the server is not registered."
+} | ConvertTo-Json -Depth 5

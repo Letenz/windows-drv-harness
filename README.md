@@ -2,76 +2,49 @@
 
 [中文说明](README.zh-CN.md)
 
-Self-contained AI skill bundle for Windows kernel driver testing with VMware
-Workstation, VirtualKD-Redux, WinDbg, `windbg-mcp`, and `vmware-mcp`.
+An AI-oriented Windows kernel-driver test harness for VMware Workstation,
+VirtualKD-Redux, and WinDbg. Version 2 gives small models one high-level MCP
+server instead of asking them to coordinate raw VMware commands, debugger
+processes, pipes, credentials, and snapshot cleanup.
 
-The useful payload lives under one skill directory:
-
-```text
-skills/windows-drv-harness/
-  SKILL.md
-  windbg-mcp/mcpext.dll
-  windbg-mcp/windbg-mcp.exe
-  vmware-mcp/
-  windows-drv-harness.config.example.json
-  windows-drv-harness.config.schema.json
-```
-
-There is also a small human-facing sample driver:
+## Architecture
 
 ```text
-example/HelloWorld/
-  README.md
-  HelloWorld.sln
-  HelloWorld/HelloWorld.c
-  HelloWorld/HelloWorld.inf
-  HelloWorld/HelloWorld.vcxproj
+AI agent
+  -> windows-drv-harness MCP (7 small, task-level tools)
+       -> target profile + target-scoped state
+       -> vmrun.exe
+       -> WinDbg + mcpext.dll on a unique MCP pipe
+       -> windbg-mcp.exe 2.0 on the same pipe
 ```
 
-## Component Sources
-
-- `windbg-mcp`: source repository is
-  [Letenz/windbg-mcp](https://github.com/Letenz/windbg-mcp). This harness
-  vendors a known-good `windbg-mcp.exe` and `mcpext.dll` under
-  `skills/windows-drv-harness/windbg-mcp/` so an agent can use the debugger
-  bridge without cloning or building it during a driver test. When replacing
-  these binaries, update the adjacent `.sha256` files too.
-- `vmware-mcp`: source repository is
-  [ZacharyZcR/vmware-mcp](https://github.com/ZacharyZcR/vmware-mcp). It is
-  bundled as the submodule under `skills/windows-drv-harness/vmware-mcp/`.
-
-There is no extra high-level harness MCP server. The AI reads the skill and
-directly uses `windbg-mcp`, `vmware-mcp` or `vmrun.exe`, and bounded
-PowerShell.
-
-## What It Does
-
-The skill gives an AI agent a closed loop for driver testing:
+Runtime configuration is outside the installed skill:
 
 ```text
-build driver -> restore VirtualKD-ready snapshot -> deploy .sys ->
-load driver -> collect WinDbg/guest evidence -> unload -> revert -> patch code
+%LOCALAPPDATA%\windows-drv-harness\
+  config.json
+  state\
+  logs\
 ```
 
-The key is procedural correctness: the baseline snapshot must be captured only
-after the guest has booted and classic WinDbg has already attached to the
-kernel target through VirtualKD/KDNET at least once; `vmmon64.exe` must be
-running before the VM is restored; and the agent must use `windbg-mcp` to read
-debugger state instead of guessing from screenshots.
+One config can hold any number of VM targets. Each target has its own VMX,
+snapshot, guest account, stable VirtualKD KD pipe, and unique windbg-mcp pipe.
+Target startups are briefly serialized while binding a KD pipe; attached
+WinDbg/MCP sessions can then run in parallel.
 
 ## Requirements
 
-- Windows host
-- VMware Workstation Pro
-- VirtualKD-Redux installed on host and guest
-- Windows guest VM with VMware Tools
-- A baseline VMware snapshot captured after the guest has booted, VMware Tools
-  is running, VirtualKD/KDNET is configured, and classic WinDbg has successfully
-  attached to the kernel target. Do not use a cold/offline snapshot that has
-  never reached a verified two-machine debugging state.
-- Python 3.10+ for `vmware-mcp`
-- Administrator/elevated agent session for HKLM registry writes and reliable
-  `vmmon64.exe` control
+- Windows host with Python 3.10+
+- VMware Workstation and `vmrun.exe`
+- VirtualKD-Redux on host and guest
+- Classic x64 `windbg.exe`
+- WDK/Visual Studio when building drivers
+- VMware Tools in each guest
+
+The baseline snapshot must be saved after the guest has booted, VMware Tools
+is running, and classic WinDbg has successfully attached to the kernel target
+through VirtualKD/KDNET. A cold snapshot that never reached a verified
+two-machine debugging state is not a valid baseline.
 
 ## Quick Start
 
@@ -80,129 +53,114 @@ git clone --recursive https://github.com/Letenz/windows-drv-harness.git
 cd windows-drv-harness
 
 $skill = ".\skills\windows-drv-harness"
-Copy-Item "$skill\windows-drv-harness.config.example.json" "$skill\windows-drv-harness.config.json"
-powershell -ExecutionPolicy Bypass -File "$skill\scripts\detect-mcp.ps1"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\install-mcp.ps1"
+
+py -3.11 "$skill\scripts\configure_target.py" `
+  --target win10-lab `
+  --vmx "D:\VMs\win10-lab\win10-lab.vmx" `
+  --snapshot baseline-debug-ready `
+  --kd-pipe kd_win10_lab `
+  --guest-user testadmin `
+  --guest-deploy-dir "C:\Users\testadmin\Desktop" `
+  --make-default
+
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\setup-host.ps1"
+py -3.11 "$skill\scripts\harness_cli.py" doctor --target win10-lab
 ```
 
-`windows-drv-harness.config.json` is gitignored. Put VM paths, snapshot
-name, guest credentials, and tool paths there before environment checks. Local
-plaintext guest passwords are supported when you want a self-contained config;
-agents should redact secrets in chat output and never commit this file.
+`configure_target.py` prompts for the guest password without placing it on the
+command line. The machine-local config may store plaintext credentials or an
+`${env:VAR_NAME}` reference; harness output always redacts secret fields.
 
-If the current agent already shows `windbg-mcp` and `vmware-mcp` in its
-callable tools, use them directly and skip the detection/registration scripts.
-If MCP tools are missing, run `scripts\install-mcp.ps1` to prepare local
-tooling. It does not add servers to a client MCP list. After explicit user
-confirmation, Codex users can run:
+`setup-host.ps1` self-elevates when necessary. It disables VirtualKD automatic
+debugger launch, records bounded-discovery tool paths, and ensures one global
+`vmmon64.exe`. Run it as one-time host setup, not before every parallel target.
+
+After the smoke check, register the single high-level server when desired:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$skill\scripts\install-mcp.ps1"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\detect-mcp.ps1"
 powershell -ExecutionPolicy Bypass -File "$skill\scripts\register-mcp.ps1" -Apply
 ```
 
-If registration fails, use the manual commands printed by `detect-mcp.ps1` or
-`register-mcp.ps1`.
+For a custom agent, point its stdio MCP entry at:
 
-For a custom agent, the scripts cannot prove that your agent loaded the MCP
-server unless your agent exposes its own list/config API. They can still
-validate the server side with a client-independent MCP stdio smoke test:
+```text
+py -3.11 <SKILL_DIR>\scripts\harness_mcp.py
+```
+
+The server is dependency-free and can be checked without changing any client:
 
 ```powershell
-py -3 "$skill\scripts\smoke-mcp-server.py" --server windbg
-py -3 "$skill\scripts\smoke-mcp-server.py" --server vmware
+py -3.11 "$skill\scripts\smoke-mcp-server.py" --server harness
 ```
 
-Then add the printed command paths to your custom agent's MCP configuration
-and have the agent list tools before any VM operation.
+## MCP Tools
 
-`windbg-mcp.exe` is native and runs directly from
-`skills\windows-drv-harness\windbg-mcp\windbg-mcp.exe`.
+| Tool | Purpose |
+|---|---|
+| `lab_list_targets` | List profiles without credentials |
+| `lab_doctor` | Read-only target readiness check |
+| `lab_start` | Open a target-scoped interactive debugger session |
+| `driver_build` | Select WDK-compatible MSBuild and return the `.sys` |
+| `driver_test` | Deploy, test, collect evidence, and restore baseline |
+| `debug_run` | Run one extra WinDbg command when needed |
+| `lab_reset` | Reset only the selected target |
 
-For shell-only clients, use the bundled one-shot helper instead of creating a
-temporary MCP client in the repo root:
+Every result contains a stable `status` and `next_action`. `driver_test` uses
+`expect="crash"` for a known failing build and `expect="success"` after the
+fix. It attempts baseline cleanup on every exit path.
+
+## Multiple Targets
+
+Run `configure_target.py` again with another `--target`, `--vmx`, `--kd-pipe`,
+and guest account. Give every target a unique MCP pipe; when omitted it is
+derived as `windbgmcp-<target>`.
+
+The VirtualKD `kd_pipe` is a stable observed binding and must be explicit. It
+is not assumed to get a new name after snapshot restore. The separate
+`mcp_pipe` routes one WinDbg 2.0 bridge to one target and allows parallel
+sessions without exposing many MCP server registrations to the model.
+
+## HelloWorld Example
+
+`example/HelloWorld` deliberately writes through `NULL` in `DriverEntry`.
+Give an agent this compact task:
+
+```text
+Use the windows-drv-harness tools on example\HelloWorld. Build it, run the
+first driver test expecting a crash, use the returned WinDbg evidence to make
+the smallest source fix, rebuild, and run a success test. Finish only when the
+service loads/unloads cleanly and cleanup reports the VM reverted.
+```
+
+Expected first result: bugcheck `0x7E`, access violation, probable culprit
+`HelloWorld.sys`. Expected fixed result: create/start/stop/delete succeed,
+WinDbg sees the module load and unload, and the configured baseline is
+restored.
+
+## Bundled WinDbg Bridge
+
+The skill vendors `windbg-mcp.exe` and `mcpext.dll` 2.0 from
+[Letenz/windbg-mcp](https://github.com/Letenz/windbg-mcp). Version 2 supports
+one named endpoint per WinDbg instance, explicit detach/shutdown semantics,
+and bridge-instance pinning. Exact source commit and artifact hashes are in
+`skills/windows-drv-harness/windbg-mcp/build-manifest.json`.
+
+`vmware-mcp` remains available as a submodule for advanced/raw operation, but
+small models should use the high-level harness server.
+
+## Development Checks
 
 ```powershell
-py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_session
-py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_run_cmd "lm m nt"
+py -3.11 -m unittest discover -s tests -v
+py -3.11 skills\windows-drv-harness\scripts\smoke-mcp-server.py --server harness
+py -3.11 skills\windows-drv-harness\scripts\smoke-mcp-server.py --server windbg --pipe windbgmcp-smoke
 ```
 
-## Moving To Another Host
-
-The skill folder is portable, but the lab state is not. On a new computer you
-must install VMware Workstation, Windows Kits Debuggers, VirtualKD-Redux, and
-Python, copy or recreate a VM whose baseline snapshot was saved after boot and
-after a verified WinDbg two-machine debugging attach, then create a new local
-`windows-drv-harness.config.json` with that machine's VMX, snapshot, tool
-paths, symbols path, and guest credentials. If those paths and the prepared
-snapshot are valid, the same skill should run there too.
-
-## Prompt Examples
-
-Use this prompt when handing the repo to an AI agent:
-
-```text
-Use skills/windows-drv-harness/SKILL.md as the operating manual. Resolve
-tool paths relative to that skill directory. Do not look for an extra harness
-MCP server. Use windbg-mcp for debugger state and commands, vmware-mcp or
-vmrun for VMware operations, and bounded PowerShell for vmmon/VirtualKD
-registry work. Run the skill's preflight gate before any vmrun operation:
-disable VirtualKD auto debugger launch, ensure exactly one vmmon64.exe is
-running, close stale KD/WinDbg, restore/start the VM, wait for the new
-VirtualKD main KD pipe, then launch GUI WinDbg against that pipe and wait for
-the windbgmcp pipe. Use the GUI WinDbg window,
-debugger log, and windbg-mcp tools for progress visibility. Do not scan whole
-drives; ask me for the VMX path and any missing paths after
-bounded probing fails. Do not choose a VM from vmrun list without my explicit
-confirmation. Fill the local gitignored config first, including guest
-credentials for vmrun/vmware-mcp, and redact secrets in chat output. Ask
-before registering MCP servers in my current client.
-```
-
-For a driver test:
-
-```text
-Build my driver, restore the VirtualKD-ready snapshot, copy the .sys to the
-guest, load it with sc.exe, collect wm_session/wm_run_cmd evidence, unload it,
-revert the snapshot, and patch the smallest code area if the test fails.
-```
-
-## Example Driver
-
-`example/HelloWorld` is an intentionally crashing sample driver. Use it to test
-whether an AI agent can run the whole harness loop, not just build a driver.
-The original local test project was misspelled `HelloWord`; this repository
-uses the corrected `HelloWorld` name throughout the example.
-
-Use this task prompt:
-
-```text
-Run example\HelloWorld according to skills/windows-drv-harness/SKILL.md.
-First reproduce the expected BSOD and report the WinDbg MCP bugcheck/root
-cause. Then make the smallest source fix, rebuild, restore the baseline
-snapshot, retest, and finish only after sc start/stop/delete succeed and the VM
-is reverted.
-```
-
-The seeded bug is a `NULL` write in `DriverEntry`. A correct first test should
-produce bugcheck `0x7E` `SYSTEM_THREAD_EXCEPTION_NOT_HANDLED` with
-`STATUS_ACCESS_VIOLATION`. A correct fix removes that bad write, rebuilds the
-driver, reruns the VMware test, and confirms `sc start`, `sc stop`, and
-`sc delete` complete without a new BSOD. See `example/HelloWorld/README.md`
-for the exact prompt and expected evidence.
-
-## Notes
-
-- `vmmon64.exe` must run before restoring a VirtualKD snapshot.
-- VirtualKD auto debugger launch should be disabled; the agent launches
-  classic `windbg.exe -b ...` manually after the VirtualKD main KD pipe
-  appears. Unless the user explicitly gives another kernel debugger pipe, use
-  the VirtualKD `\\.\pipe\kd_*` pipe for WinDbg.
-- `mcpext.dll` accepts one pipe client at a time.
-- Old KD/WinDbg processes should be closed before each restore if their command line
-  shows `mcpext.dll`, `windbgmcpExt.dll`, `!mcpext.start`, `!mcpstart`, or the
-  `windbgmcp` pipe.
-- Do not commit `windows-drv-harness.config.json`.
+Large logs and all machine state remain under `%LOCALAPPDATA%`; neither should
+be committed.
 
 ## License
 
-MIT. Third-party submodules keep their own licenses.
+MIT. Third-party submodules retain their own licenses.

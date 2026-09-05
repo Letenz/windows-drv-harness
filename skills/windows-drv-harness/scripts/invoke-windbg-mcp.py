@@ -25,9 +25,12 @@ def send(proc: subprocess.Popen[str], payload: dict) -> None:
     proc.stdin.flush()
 
 
-def call_tool(server: Path, tool: str, arguments: dict) -> dict:
+def call_tool(server: Path, pipe: str | None, tool: str, arguments: dict) -> dict:
+    command = [str(server)]
+    if pipe:
+        command += ["--pipe", pipe]
     proc = subprocess.Popen(
-        [str(server)],
+        command,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -100,10 +103,11 @@ def main() -> int:
     parser.add_argument("args", nargs="*", help="Plain argument. For wm_run_cmd this becomes cmd.")
     parser.add_argument("--json", help="Tool arguments as a JSON object.")
     parser.add_argument("--server", default=str(default_server), help="Path to windbg-mcp.exe.")
+    parser.add_argument("--pipe", help="Target-specific pipe name or endpoint.")
     ns = parser.parse_args()
 
     arguments = build_arguments(ns.tool, ns.json, ns.args)
-    response = call_tool(Path(ns.server), ns.tool, arguments)
+    response = call_tool(Path(ns.server), ns.pipe, ns.tool, arguments)
     print(json.dumps(response, ensure_ascii=False, indent=2))
     return 0
 

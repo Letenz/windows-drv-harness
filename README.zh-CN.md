@@ -1,80 +1,45 @@
 # windows-drv-harness
 
-面向 AI agent 的 Windows 内核驱动自动化测试 skill 包，基于 VMware
-Workstation、VirtualKD-Redux、WinDbg、`windbg-mcp` 和 `vmware-mcp`。
+面向 AI 的 Windows 内核驱动测试 harness，组合 VMware Workstation、
+VirtualKD-Redux 和 WinDbg。v2 不再让小模型自己编排 VMware 命令、调试器进程、
+管道、凭据和快照清理，而是只暴露一个高层 MCP server。
 
-这个仓库没有额外的高层 harness MCP。AI 读取 skill 后，直接使用：
-
-- `windbg-mcp`：读 WinDbg 状态、执行调试命令、分析崩溃。
-- `vmware-mcp` 或 `vmrun.exe`：恢复快照、启动虚拟机、向 guest 拷贝文件、运行 `sc.exe`。
-- 受限 PowerShell：处理 `vmmon64.exe`、VirtualKD 注册表和本机路径探测。
-
-## 目录结构
-
-真正给 AI 读取的是一个 skill 目录：
+## 架构
 
 ```text
-skills/windows-drv-harness/
-  SKILL.md
-  windbg-mcp/mcpext.dll
-  windbg-mcp/windbg-mcp.exe
-  vmware-mcp/
-  windows-drv-harness.config.example.json
-  windows-drv-harness.config.schema.json
+AI agent
+  -> windows-drv-harness MCP（7 个任务级工具）
+       -> target profile + target 独立状态
+       -> vmrun.exe
+       -> WinDbg + mcpext.dll（独立 MCP 管道）
+       -> windbg-mcp.exe 2.0（同一管道）
 ```
 
-给人看的示例驱动放在：
+运行配置不再放在 skill 安装目录：
 
 ```text
-example/HelloWorld/
-  README.md
-  HelloWorld.sln
-  HelloWorld/HelloWorld.c
-  HelloWorld/HelloWorld.inf
-  HelloWorld/HelloWorld.vcxproj
+%LOCALAPPDATA%\windows-drv-harness\
+  config.json
+  state\
+  logs\
 ```
 
-## 组件来源
-
-- `windbg-mcp`：源码仓库是
-  [Letenz/windbg-mcp](https://github.com/Letenz/windbg-mcp)。本 harness
-  仓库会在 `skills/windows-drv-harness/windbg-mcp/` 内置一份已知可用的
-  `windbg-mcp.exe` 和 `mcpext.dll`，这样 AI 测试驱动时不需要临时 clone 或
-  编译 `windbg-mcp`。替换这些二进制时，也要同步更新旁边的 `.sha256`
-  文件。
-- `vmware-mcp`：源码仓库是
-  [ZacharyZcR/vmware-mcp](https://github.com/ZacharyZcR/vmware-mcp)。本仓库把它作为
-  submodule 放在 `skills/windows-drv-harness/vmware-mcp/`。
-
-## 它解决什么
-
-目标是让 AI 能跑完整的驱动测试闭环：
-
-```text
-编译驱动 -> 恢复 VirtualKD-ready 快照 -> 部署 .sys ->
-加载驱动 -> 收集 WinDbg/guest 证据 -> 卸载驱动 -> 回滚快照 -> 修改代码
-```
-
-关键不在“写更多脚本”，而在把易错时序固定下来：
-
-- baseline 快照必须在 guest 已经开机、VMware Tools 正常、VirtualKD/KDNET
-  已配置、经典 WinDbg 已经成功挂上内核目标并确认双机调试可用之后保存；不要使用从未
-  挂上 WinDbg 双机调试的冷快照或普通系统快照。
-- `vmmon64.exe` 必须在恢复/启动 VM 之前运行。
-- VirtualKD 自动启动 debugger 应关闭，让 agent 在看到新的 `kd_*` 管道后自己启动 GUI `windbg.exe -b`。
-- WinDbg 必须加载 `mcpext.dll` 并执行 `!mcpext.start`，否则 `windbg-mcp` 无法连接。
-- agent 必须通过 `windbg-mcp` 判断调试状态，不要靠截图、窗口标题或猜测。
+一个配置可以保存任意数量的 VM target。每个 target 都有自己的 VMX、快照、
+guest 账号、稳定 VirtualKD KD 管道和唯一 windbg-mcp 管道。启动阶段会短暂串行化
+以确认 KD 管道归属，挂接完成后的 WinDbg/MCP 会话可以并行运行。
 
 ## 前置条件
 
-- Windows host
-- VMware Workstation Pro
-- host 和 guest 都配置好 VirtualKD-Redux
-- Windows guest VM 安装 VMware Tools
-- 一个在 guest 已经开机、VMware Tools 正常、VirtualKD/KDNET 已配置、经典 WinDbg
-  已经成功挂上内核目标并确认双机调试可用之后保存的 baseline 快照
-- Python 3.10+，用于 `vmware-mcp`
-- 建议让当前 agent/终端具备管理员权限，方便写 HKLM 注册表和控制 `vmmon64.exe`
+- Windows host 和 Python 3.10+
+- VMware Workstation 与 `vmrun.exe`
+- host/guest 安装 VirtualKD-Redux
+- 经典 x64 `windbg.exe`
+- 编译驱动所需的 WDK/Visual Studio
+- guest 中运行 VMware Tools
+
+baseline 快照必须在 guest 已经开机、VMware Tools 正常、经典 WinDbg 已通过
+VirtualKD/KDNET 成功挂上内核目标之后保存。没有验证过双机调试的冷快照不是有效
+baseline。
 
 ## 快速开始
 
@@ -83,120 +48,106 @@ git clone --recursive https://github.com/Letenz/windows-drv-harness.git
 cd windows-drv-harness
 
 $skill = ".\skills\windows-drv-harness"
-Copy-Item "$skill\windows-drv-harness.config.example.json" "$skill\windows-drv-harness.config.json"
-powershell -ExecutionPolicy Bypass -File "$skill\scripts\detect-mcp.ps1"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\install-mcp.ps1"
+
+py -3.11 "$skill\scripts\configure_target.py" `
+  --target win10-lab `
+  --vmx "D:\VMs\win10-lab\win10-lab.vmx" `
+  --snapshot baseline-debug-ready `
+  --kd-pipe kd_win10_lab `
+  --guest-user testadmin `
+  --guest-deploy-dir "C:\Users\testadmin\Desktop" `
+  --make-default
+
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\setup-host.ps1"
+py -3.11 "$skill\scripts\harness_cli.py" doctor --target win10-lab
 ```
 
-`windows-drv-harness.config.json` 已被 gitignore。环境检查前先把 VMX 路径、快照名、guest 用户名、guest 密码、工具路径等写进去。这个本地配置可以按你的要求保存明文 guest 密码；agent 在聊天输出里必须打码，并且不要提交这个文件。也可以继续用环境变量，例如：
+`configure_target.py` 会隐藏输入 guest 密码，不把密码放到命令行。本机配置可以保存
+明文密码或 `${env:VAR_NAME}`，但 harness 输出始终对敏感字段打码。
 
-```json
-"admin_password": "${env:KERNEL_DRIVER_TEST_GUEST_PASSWORD}"
-```
+`setup-host.ps1` 在需要时会自行提权，关闭 VirtualKD 自动拉起 debugger、回填受限
+路径探测结果，并保证全局只有一个 `vmmon64.exe`。这是一次性 host setup，不要在
+每个并行 target 启动前重复执行。
 
-如果当前 agent 的可调用工具里已经有 `windbg-mcp` 和 `vmware-mcp`，直接用，不需要跑探测/注册脚本。如果 MCP 工具不可见，再运行 `scripts\install-mcp.ps1` 准备本地工具。它不会把 server 写入客户端 MCP list。用户明确确认后，Codex 可以执行：
+确认 server 正常后，可注册唯一的高层 MCP：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$skill\scripts\install-mcp.ps1"
+powershell -ExecutionPolicy Bypass -File "$skill\scripts\detect-mcp.ps1"
 powershell -ExecutionPolicy Bypass -File "$skill\scripts\register-mcp.ps1" -Apply
 ```
 
-如果自动注册失败，就使用 `detect-mcp.ps1` 或 `register-mcp.ps1` 打印出的手工命令。
+自写 agent 可把下面命令配置成 stdio MCP server：
 
-如果是自写 agent，除非你的 agent 暴露自己的 MCP list/config API，否则脚本不能证明“agent 已经加载成功”。但仍然可以做客户端无关的 MCP stdio 服务端冒烟测试：
+```text
+py -3.11 <SKILL_DIR>\scripts\harness_mcp.py
+```
+
+无需修改客户端即可做协议冒烟：
 
 ```powershell
-py -3 "$skill\scripts\smoke-mcp-server.py" --server windbg
-py -3 "$skill\scripts\smoke-mcp-server.py" --server vmware
+py -3.11 "$skill\scripts\smoke-mcp-server.py" --server harness
 ```
 
-通过后，把脚本打印/README 中的 server command 配进你的自写 agent；然后让自写 agent 自己执行 list-tools，确认能看到工具，再进入 VM 操作。
+## MCP 工具
 
-`windbg-mcp.exe` 是 native 程序，可直接从下面路径运行：
+| 工具 | 作用 |
+|---|---|
+| `lab_list_targets` | 列出 profile，不暴露凭据 |
+| `lab_doctor` | 只读检查 target 是否就绪 |
+| `lab_start` | 启动 target 独立的交互调试会话 |
+| `driver_build` | 自动选择匹配 WDK 的 MSBuild 并返回 `.sys` |
+| `driver_test` | 部署、测试、收集证据并恢复 baseline |
+| `debug_run` | 证据不足时执行一条额外 WinDbg 命令 |
+| `lab_reset` | 只重置选中的 target |
 
-```text
-skills\windows-drv-harness\windbg-mcp\windbg-mcp.exe
-```
+每个结果都有稳定的 `status` 和 `next_action`。故障版使用
+`driver_test(expect="crash")`，修复并重新编译后使用 `expect="success"`。
+`driver_test` 在任何退出路径都会尝试恢复 baseline。
 
-如果当前客户端没有注册好的 MCP 工具，用内置的一次性辅助脚本，不要在仓库根目录临时生成 MCP client：
+## 多 Target
 
-```powershell
-py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_session
-py -3 .\skills\windows-drv-harness\scripts\invoke-windbg-mcp.py wm_run_cmd "lm m nt"
-```
+再次运行 `configure_target.py` 并提供新的 `--target`、`--vmx`、`--kd-pipe`
+和 guest 账号即可增加 VM。每个 target 必须使用不同的 MCP 管道；不指定时会按
+`windbgmcp-<target>` 生成。
 
-## 换电脑运行
-
-skill 目录本身可以迁移，但测试环境不能自动迁移。新电脑上需要安装 VMware Workstation、Windows Kits Debuggers、VirtualKD-Redux 和 Python，并复制或重新创建一个 baseline 快照已在 guest 开机后、WinDbg 双机调试成功挂上后保存的 VM。然后在新机器上重新创建本地 `windows-drv-harness.config.json`，由用户指定那台机器自己的 VMX、快照名、工具路径、符号路径和 guest 凭据。agent 不应该从 `vmrun list`、目录扫描或正在运行的 VM 里替用户选择 VMX/快照。只要这些路径和 baseline 快照有效，同一份 skill 就应该可以继续跑通。
-
-## 给 AI 的提示词
-
-把这个仓库交给 AI agent 时，可以直接给它下面这段：
-
-```text
-Use skills/windows-drv-harness/SKILL.md as the operating manual. Resolve
-tool paths relative to that skill directory. Do not look for an extra harness
-MCP server. Use windbg-mcp for debugger state and commands, vmware-mcp or
-vmrun for VMware operations, and bounded PowerShell for vmmon/VirtualKD
-registry work. Run the skill's preflight gate before any vmrun operation:
-disable VirtualKD auto debugger launch, ensure exactly one vmmon64.exe is
-running, close stale KD/WinDbg, restore/start the VM, wait for the new
-VirtualKD main KD pipe, then launch GUI WinDbg against that pipe and wait for
-the windbgmcp pipe. Use the GUI WinDbg window,
-debugger log, and windbg-mcp tools for progress visibility. Do not scan whole
-drives; ask me for the VMX path and any missing paths after bounded probing
-fails. Do not choose a VM from vmrun list without my explicit confirmation.
-Fill the local gitignored config first, including guest credentials for
-vmrun/vmware-mcp, and redact secrets in chat output. Ask before registering MCP
-servers in my current client.
-```
-
-驱动测试任务可以这样说：
-
-```text
-Build my driver, restore the VirtualKD-ready snapshot, copy the .sys to the
-guest, load it with sc.exe, collect wm_session/wm_run_cmd evidence, unload it,
-revert the snapshot, and patch the smallest code area if the test fails.
-```
+VirtualKD 的 `kd_pipe` 是显式绑定的稳定管道，不能假定恢复快照后它会改名。
+独立的 `mcp_pipe` 把一组 WinDbg 2.0 bridge 路由到一个 target，因此既能并行，
+也不会让小模型面对多个 MCP server 注册项。
 
 ## HelloWorld 示例
 
-`example/HelloWorld` 是一个故意会触发蓝屏的最小 WDM 驱动，用来验证 AI 是否真的能跑完整闭环，而不是只会编译。
-
-可以直接把下面这段任务交给 AI：
+`example/HelloWorld` 在 `DriverEntry` 中故意执行空指针写。可直接给 AI 下面的任务：
 
 ```text
-请按 skills/windows-drv-harness/SKILL.md 运行 example\HelloWorld。
-先复现预期 BSOD 并用 WinDbg MCP 给出 bugcheck/根因；然后只修最小代码，
-重新编译并恢复 baseline 快照复测，直到 sc start/stop/delete 都成功且最终回滚 VM。
+使用 windows-drv-harness 工具运行 example\HelloWorld。先编译并执行一次
+expect=crash 的测试，根据返回的 WinDbg 证据做最小源码修复；重新编译后执行
+expect=success。只有服务能干净加载/卸载且 cleanup 显示 VM 已回滚才算完成。
 ```
 
-首轮预期结果：
+首轮应得到 `0x7E`、访问异常和 `HelloWorld.sys`；修复后应看到
+create/start/stop/delete 成功、WinDbg 确认模块加载与卸载、VM 恢复到配置好的
+baseline。
 
-- `sc start HelloWorld` 触发 guest BSOD。
-- WinDbg 报告 `0x7E SYSTEM_THREAD_EXCEPTION_NOT_HANDLED`。
-- 异常是 `STATUS_ACCESS_VIOLATION`。
-- 故障位置在 `HelloWorld!DriverEntry`。
+## 内置 WinDbg Bridge
 
-最终修复后的预期结果：
+skill 内置来自 [Letenz/windbg-mcp](https://github.com/Letenz/windbg-mcp) 的
+`windbg-mcp.exe` 与 `mcpext.dll` 2.0。新版支持每个 WinDbg 使用独立 endpoint、
+明确区分 detach/shutdown，并通过 bridge instance 绑定防止重连到错误调试器。
+准确源码提交和二进制哈希见
+`skills/windows-drv-harness/windbg-mcp/build-manifest.json`。
 
-- `sc create` 和 `sc start` 成功。
-- WinDbg `lm m HelloWorld` 能看到模块已加载。
-- 加载过程不再发生 BSOD。
-- `sc stop` 和 `sc delete` 成功。
-- 卸载后 WinDbg `lm m HelloWorld` 不再显示该模块。
-- VM 被恢复到配置好的 VirtualKD-ready baseline 快照。
+`vmware-mcp` submodule 仍保留给高级/底层排查；小模型应使用高层 harness server。
 
-最初本地测试项目误拼成 `HelloWord`，本仓库已经统一改名为 `HelloWorld`。
+## 开发校验
 
-## 注意事项
+```powershell
+py -3.11 -m unittest discover -s tests -v
+py -3.11 skills\windows-drv-harness\scripts\smoke-mcp-server.py --server harness
+py -3.11 skills\windows-drv-harness\scripts\smoke-mcp-server.py --server windbg --pipe windbgmcp-smoke
+```
 
-- 不要让 agent 全盘搜索工具路径。最多查配置、环境变量、注册表和默认安装路径；找不到就问用户。
-- 不要让 agent 自己从 `vmrun list` 里擅自选择 VMX，必须由用户确认。
-- `vmmon64.exe` 读取 VirtualKD 注册表是在启动时发生的；改注册表前先停 vmmon，改完再启动。
-- 推荐关闭 VirtualKD 自动启动 debugger，让 agent 自己控制 WinDbg 时序。
-- 除非用户明确指定其他 kernel debugger pipe，否则 WinDbg 的 `-k` 连接管道就用 VirtualKD 暴露的主 `\\.\pipe\kd_*` 管道。
-- guest 停在 KD break 状态时，不要跑 `vmrun` guest 操作；先让调试器执行 `g`。
-- 不要提交 `windows-drv-harness.config.json`。
+大日志和所有机器状态都保存在 `%LOCALAPPDATA%`，不要提交到仓库。
 
 ## License
 

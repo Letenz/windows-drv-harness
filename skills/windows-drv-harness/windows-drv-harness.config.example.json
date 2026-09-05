@@ -1,54 +1,44 @@
 {
   "$schema": "./windows-drv-harness.config.schema.json",
-
+  "version": 2,
+  "default_target": "win10-lab",
   "_comment": [
-    "Copy this file to windows-drv-harness.config.json and fill in real values.",
-    "During environment checks, agents should create/update that local config first.",
-    "windows-drv-harness.config.json is gitignored; it may contain local VM paths and credentials.",
-    "Never commit windows-drv-harness.config.json and always redact secrets in chat output.",
-    "Agents may probe explicit input, this config, env vars, registry values,",
-    "and fixed default paths only. If a tool is still missing, ask the user."
+    "Do not put the active config in the skill directory.",
+    "Create %LOCALAPPDATA%\\windows-drv-harness\\config.json with configure_target.py.",
+    "The active config is machine-local and may contain guest credentials.",
+    "Never commit it and always redact secrets from model output."
   ],
-
-  "vm": {
-    "vmx_path": "",
-    "baseline_snapshot": "",
-    "_comment": [
-      "baseline_snapshot must already exist.",
-      "It must be taken after guest VirtualKD/KDNET, VMware Tools, debug boot,",
-      "testsigning as needed, and guest admin credentials are ready."
-    ]
-  },
-
-  "guest": {
-    "admin_user": "",
-    "admin_password": "",
-    "desktop_path": "",
-    "arch": "x64",
-    "os_version_hint": "win10_19041",
-    "_comment": [
-      "admin_user/admin_password are the guest credentials used by vmrun/vmware-mcp",
-      "for copyFileFromHostToGuest and runProgramInGuest. If the user wants",
-      "persistent local credentials, fill the password here in plaintext."
-    ]
-  },
-
   "host": {
     "vmrun_path": "",
     "vmmon64_path": "",
+    "windbg_path": "",
+    "msbuild_path": "",
     "symbols_path": "",
-    "vmnet8_ip": "",
     "_comment": [
-      "Leave vmrun_path/vmmon64_path empty only if they are discoverable from",
-      "default locations, environment variables, or registry values.",
-      "vmmon64.exe must run before restoring/starting a VirtualKD snapshot."
+      "Host paths are shared by all targets.",
+      "setup-host.ps1 fills paths found by bounded probing or an elevated process check."
     ]
   },
-
-  "flags": {
-    "guest_testsigning_enabled": false,
-    "guest_kdnet_configured": false,
-    "guest_vkd_installed": false,
-    "baseline_snapshot_created": false
+  "targets": {
+    "win10-lab": {
+      "vmx_path": "",
+      "baseline_snapshot": "",
+      "kd_pipe": "",
+      "mcp_pipe": "windbgmcp-win10-lab",
+      "guest": {
+        "admin_user": "",
+        "admin_password": "",
+        "deploy_dir": "",
+        "arch": "x64"
+      },
+      "flags": {
+        "baseline_debugger_attached": false
+      },
+      "_comment": [
+        "Add one object per VM. Bind its observed VirtualKD kd_pipe explicitly.",
+        "Every target also needs a unique mcp_pipe for the WinDbg MCP bridge.",
+        "The baseline must be saved after the guest booted and WinDbg attached successfully."
+      ]
+    }
   }
 }
